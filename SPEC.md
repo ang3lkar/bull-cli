@@ -1,6 +1,6 @@
 # bull-cli Specification
 
-A terminal dashboard for [bull](https://github.com/OptimalBits/bull) job queues — the TUI equivalent of bull-board.
+A terminal dashboard for [BullMQ](https://github.com/taskforcesh/bullmq) job queues — the TUI equivalent of bull-board.
 
 ---
 
@@ -11,7 +11,7 @@ A terminal dashboard for [bull](https://github.com/OptimalBits/bull) job queues 
 | Language | TypeScript |
 | Runtime | Node.js |
 | TUI framework | [Ink](https://github.com/vadimdemedes/ink) (React for terminal) |
-| Bull version | `bull` (original) only — BullMQ deferred |
+| Queue library | `bullmq` |
 | Distribution | npm global package (`npm install -g bull-cli`) |
 
 ---
@@ -20,7 +20,7 @@ A terminal dashboard for [bull](https://github.com/OptimalBits/bull) job queues 
 
 ### Discovery
 
-Auto-discovery only. On startup, the CLI connects to Redis and scans for keys matching bull's internal pattern (`bull:*:id`) to infer queue names. No explicit queue configuration required.
+Auto-discovery only. On startup, the CLI connects to Redis and scans for keys matching BullMQ's internal pattern (`bull:*:meta`) to infer queue names. No explicit queue configuration required.
 
 ### Connection precedence
 
@@ -57,7 +57,7 @@ redis://username:password@host:6379
 
 ### Sidebar
 
-- Lists all discovered bull queues, sorted **alphabetically**
+- Lists all discovered BullMQ queues, sorted **alphabetically**
 - Shows queue name only — no job counts
 - Paused queues show a `⏸` indicator next to their name
 - Refreshes every 3 seconds alongside job data
@@ -66,7 +66,7 @@ redis://username:password@host:6379
 
 Five tabs per queue: **Active | Waiting | Completed | Failed | Delayed**
 
-> "Paused" is a queue-level state in bull, not a job status. Paused queues are indicated in the sidebar instead.
+> "Paused" is a queue-level state in BullMQ, not a job status. Paused queues are indicated in the sidebar instead.
 
 ### Job list
 
@@ -74,11 +74,11 @@ Consistent columns across all tabs:
 
 | Column | Description |
 |---|---|
-| ID | Bull job ID (auto-incrementing integer) |
+| ID | BullMQ job ID (string) |
 | Name | Job type/name |
-| Attempts | Number of attempts made |
+| Attempts | Number of attempts made (`job.attemptsMade`) |
 | Timestamp | Created at (or processed at for completed jobs) |
-| Progress | 0–100 value |
+| Progress | 0–100 value (`job.progress`) |
 
 - Sorted **newest first**
 - Paginated: **10 jobs per page**
@@ -159,7 +159,7 @@ Three sections in a single bottom bar:
 | Scenario | Behaviour |
 |---|---|
 | Redis unreachable | Full-screen error view showing the connection string attempted — no raw stack trace |
-| No bull queues found | Empty sidebar with message: `No Bull queues found on redis://localhost:6379` |
+| No BullMQ queues found | Empty sidebar with message: `No BullMQ queues found on redis://localhost:6379` |
 | Queue disappears mid-session | Gracefully removed from the sidebar on next refresh |
 | Job action fails | Inline toast notification at the bottom of the screen — does not crash |
 
@@ -181,7 +181,7 @@ Options:
 
 ## Out of Scope (for now)
 
-- BullMQ support
+- `bull` (original) support
 - Multiple Redis instance switching
 - Theming / color customization
 - Log streaming per job
