@@ -1,0 +1,47 @@
+{
+  "name": "bull-cli",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A terminal dashboard (TUI) for BullMQ job queues.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "bull-cli": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "redis:up": "docker compose up -d --wait",
+    "redis:down": "docker compose down -v",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration --project e2e",
+    "test:all": "vitest run",
+    "coverage": "vitest run --coverage",
+    "lint": "biome check .",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build",
+    "dev": "tsx src/cli.tsx",
+    "seed": "tsx scripts/seed.ts"
+  },
+  "dependencies": {
+    "bullmq": "^5",
+    "ink": "^6",
+    "ioredis": "^5",
+    "meow": "^13",
+    "react": "^19"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@vitest/coverage-v8": "^3",
+    "ink-testing-library": "^4",
+    "tsx": "^4",
+    "typescript": "^5.8",
+    "vitest": "^3"
+  }
+}
