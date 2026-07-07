@@ -118,7 +118,18 @@ npm run redis:up          # starts a local redis:7-alpine container (docker comp
 npm run dev                # runs the CLI against local Redis via tsx
 npm run seed                # populates local Redis with demo queues/jobs
 npm run seed -- --hold      # also holds one job "active" for ~60s (Active tab demo)
+```
 
+To run the dev CLI against a custom Redis, use the same options as the installed binary — the
+`--redis` flag beats `REDIS_URL`, and both beat the `redis://localhost:6379` default. The `--`
+separator is required so npm forwards the flag to the CLI instead of consuming it:
+
+```
+npm run dev -- --redis redis://:password@myhost:6379
+REDIS_URL=redis://myhost:6379 npm run dev
+```
+
+```
 npm test                    # unit tests (no Redis required)
 npm run test:integration    # integration + e2e tests (requires npm run redis:up first)
 npm run coverage            # full coverage run across all test projects
