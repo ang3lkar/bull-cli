@@ -1,5 +1,5 @@
 import { Redis } from 'ioredis';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConnectionOpts } from '../../src/config.js';
 import { createQueueRegistry, type QueueRegistry } from '../../src/core/queueRegistry.js';
 
@@ -15,7 +15,7 @@ beforeAll(() => {
 
 beforeEach(async () => {
   await redis.flushdb();
-  registry = createQueueRegistry(connection);
+  registry = createQueueRegistry(connection, 'bull');
 });
 
 afterEach(async () => {
@@ -84,5 +84,23 @@ describe('createQueueRegistry', () => {
     // Cleanly resolving (and this file exiting without vitest hanging) is
     // the actual assertion here.
     await expect(registry.closeAll()).resolves.toBeUndefined();
+  });
+
+  it('a registry created with a custom prefix writes queue keys under that prefix', async () => {
+    const customRegistry = createQueueRegistry(connection, 'myapp');
+    try {
+      const queue = customRegistry.getQueue('emailQ');
+      await queue.add('hello', {});
+
+      // bullmq writes the meta hash fire-and-forget, off its own internal
+      // `waitUntilReady()` call — not tied to `queue.add()`'s resolution —
+      // so poll for it rather than checking immediately (see
+      // `discovery.test.ts`'s `seedQueue` for the same caveat).
+      await vi.waitUntil(async () => (await redis.exists('myapp:emailQ:meta')) === 1);
+
+      expect(await redis.exists('bull:emailQ:meta')).toBe(0);
+    } finally {
+      await customRegistry.closeAll();
+    }
   });
 });

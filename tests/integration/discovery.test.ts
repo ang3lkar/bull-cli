@@ -44,14 +44,14 @@ afterAll(() => {
 
 describe('discoverQueues', () => {
   it('returns an empty array when there are no bullmq queues', async () => {
-    await expect(discoverQueues(redis)).resolves.toEqual([]);
+    await expect(discoverQueues(redis, 'bull')).resolves.toEqual([]);
   });
 
   it('discovers queues created via bullmq', async () => {
     await seedQueue('emailQ');
     await seedQueue('smsQ');
 
-    const result = await discoverQueues(redis);
+    const result = await discoverQueues(redis, 'bull');
 
     expect(result).toEqual([
       { name: 'emailQ', isPaused: false },
@@ -67,20 +67,34 @@ describe('discoverQueues', () => {
     // exercise that case.
     await redis.hset('bull:billing:invoices:meta', 'opts.maxLenEvents', '10000');
 
-    const result = await discoverQueues(redis);
+    const result = await discoverQueues(redis, 'bull');
 
     expect(result).toEqual([{ name: 'billing:invoices', isPaused: false }]);
+  });
+
+  it('discovers a queue seeded under a custom prefix only when scanning with that prefix', async () => {
+    // Raw hset under a non-default prefix, exactly like the colon-name case
+    // above — a queue under a custom prefix could equally be created via a
+    // real bullmq `Queue({ prefix: 'myapp' })`, but seeding the meta key
+    // directly keeps this test focused on `discoverQueues`'s prefix param.
+    await redis.hset('myapp:emailQ:meta', 'opts.maxLenEvents', '10000');
+
+    const customResult = await discoverQueues(redis, 'myapp');
+    expect(customResult).toEqual([{ name: 'emailQ', isPaused: false }]);
+
+    const defaultResult = await discoverQueues(redis, 'bull');
+    expect(defaultResult).toEqual([]);
   });
 
   it('reflects paused state, then resumed state', async () => {
     const queue = await seedQueue('smsQ');
 
     await queue.pause();
-    const pausedResult = await discoverQueues(redis);
+    const pausedResult = await discoverQueues(redis, 'bull');
     expect(pausedResult).toEqual([{ name: 'smsQ', isPaused: true }]);
 
     await queue.resume();
-    const resumedResult = await discoverQueues(redis);
+    const resumedResult = await discoverQueues(redis, 'bull');
     expect(resumedResult).toEqual([{ name: 'smsQ', isPaused: false }]);
   });
 
@@ -91,7 +105,7 @@ describe('discoverQueues', () => {
     await redis.set('bullish:x:meta', 'not a queue');
     await redis.hset('bull:foo:events', 'field', 'value');
 
-    const result = await discoverQueues(redis);
+    const result = await discoverQueues(redis, 'bull');
 
     expect(result).toEqual([{ name: 'emailQ', isPaused: false }]);
   });
@@ -109,7 +123,7 @@ describe('discoverQueues', () => {
     }
     await noisePipeline.exec();
 
-    const result = await discoverQueues(redis);
+    const result = await discoverQueues(redis, 'bull');
 
     expect(result.map((q) => q.name)).toEqual([...names].sort((a, b) => a.localeCompare(b)));
     expect(result).toHaveLength(30);
@@ -120,7 +134,7 @@ describe('discoverQueues', () => {
     await seedQueue('emailQ');
     await seedQueue('smsQ');
 
-    const result = await discoverQueues(redis);
+    const result = await discoverQueues(redis, 'bull');
 
     expect(result.map((q) => q.name)).toEqual(['emailQ', 'reportQ', 'smsQ']);
   });

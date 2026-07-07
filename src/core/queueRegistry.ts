@@ -37,7 +37,7 @@ export interface QueueRegistry {
   closeAll(): Promise<void>;
 }
 
-export function createQueueRegistry(connection: ConnectionOpts): QueueRegistry {
+export function createQueueRegistry(connection: ConnectionOpts, prefix: string): QueueRegistry {
   const queues = new Map<string, Queue>();
 
   function getQueue(name: string): Queue {
@@ -45,7 +45,7 @@ export function createQueueRegistry(connection: ConnectionOpts): QueueRegistry {
     if (existing) {
       return existing;
     }
-    const queue = new Queue(name, { connection });
+    const queue = new Queue(name, { connection, prefix });
     queues.set(name, queue);
     return queue;
   }

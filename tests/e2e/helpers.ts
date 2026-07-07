@@ -50,12 +50,14 @@ export interface MountedApp {
 }
 
 /**
- * Builds a real `createApp(redisUrl)`, calls `start()` (connect + first
- * refresh + polling), and renders `<App/>` around its store — the full
- * production wiring, exactly as `cli.tsx` does it.
+ * Builds a real `createApp(redisUrl, prefix)`, calls `start()` (connect +
+ * first refresh + polling), and renders `<App/>` around its store — the full
+ * production wiring, exactly as `cli.tsx` does it. `prefix` defaults to
+ * `'bull'` (test scaffolding, unlike the app's own internal call chain,
+ * where the prefix is always required explicitly).
  */
-export async function mountApp(redisUrl: string): Promise<MountedApp> {
-  const app = createApp(redisUrl);
+export async function mountApp(redisUrl: string, prefix = 'bull'): Promise<MountedApp> {
+  const app = createApp(redisUrl, prefix);
   await app.start();
   const onQuit = vi.fn();
   const instance = render(createElement(App, { store: app.store, onQuit }));

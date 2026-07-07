@@ -74,7 +74,7 @@ describe('createApp: a colon-named queue does not take down the dashboard', () =
       timeout: WAIT_TIMEOUT_MS,
     });
 
-    app = createApp(REDIS_URL);
+    app = createApp(REDIS_URL, 'bull');
     await app.start();
 
     // 'billing:invoices' sorts before 'emailQ' alphabetically -> auto-selected.
@@ -127,7 +127,7 @@ describe('createApp: a colon-named queue does not take down the dashboard', () =
   it('a queue-level action (pause) on the colon-named queue resolves to a toast, never an unhandled rejection', async () => {
     await redis.hset('bull:billing:invoices:meta', 'opts.maxLenEvents', '10000');
 
-    app = createApp(REDIS_URL);
+    app = createApp(REDIS_URL, 'bull');
     await app.start();
     await vi.waitFor(
       () => {

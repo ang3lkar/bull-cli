@@ -1,6 +1,7 @@
 const DEFAULT_REDIS_URL = 'redis://localhost:6379';
 const DEFAULT_REDIS_PORT = 6379;
 const DEFAULT_REDIS_DB = 0;
+export const DEFAULT_BULLMQ_PREFIX = 'bull';
 
 /** Connection options accepted by both `ioredis` and `bullmq`'s `Queue`/`Worker`. */
 export interface ConnectionOpts {
@@ -31,6 +32,27 @@ export function resolveRedisUrl(flag: string | undefined, env: NodeJS.ProcessEnv
   }
 
   return DEFAULT_REDIS_URL;
+}
+
+/**
+ * Resolves the BullMQ Redis key prefix using the documented precedence:
+ * `--prefix` flag > `BULLMQ_PREFIX` env var > `'bull'` default (bullmq's own
+ * default).
+ *
+ * Empty or whitespace-only values (flag or env) are treated as absent.
+ * Pure function — no I/O, no reliance on process globals (env is injected).
+ */
+export function resolvePrefix(flag: string | undefined, env: NodeJS.ProcessEnv): string {
+  if (flag !== undefined && flag.trim() !== '') {
+    return flag;
+  }
+
+  const envPrefix = env.BULLMQ_PREFIX;
+  if (envPrefix !== undefined && envPrefix.trim() !== '') {
+    return envPrefix;
+  }
+
+  return DEFAULT_BULLMQ_PREFIX;
 }
 
 /**

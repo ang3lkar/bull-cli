@@ -20,6 +20,7 @@ bull-cli [options]
 
 Options:
   --redis <url>      Redis connection URL (overrides REDIS_URL env var)
+  --prefix <prefix>  BullMQ key prefix (overrides BULLMQ_PREFIX env var)
   -h, --help         Show help
   -v, --version      Show version
 ```
@@ -37,12 +38,19 @@ redis://:password@host:6379
 redis://username:password@host:6379
 ```
 
+BullMQ prefix precedence (highest wins):
+
+1. `--prefix <prefix>` flag
+2. `BULLMQ_PREFIX` environment variable
+3. `'bull'` (bullmq's own default)
+
 Examples:
 
 ```
 bull-cli
 bull-cli --redis redis://localhost:6379
 REDIS_URL=redis://:secret@redis.internal:6379 bull-cli
+bull-cli --prefix myapp
 ```
 
 `bull-cli` requires an interactive terminal (TTY) — it refuses to start when stdin isn't a TTY
