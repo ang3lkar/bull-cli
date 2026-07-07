@@ -56,6 +56,10 @@ bull-cli --prefix myapp
 `bull-cli` requires an interactive terminal (TTY) — it refuses to start when stdin isn't a TTY
 (e.g. piped input or a non-interactive CI shell).
 
+It runs fullscreen, in the terminal's alternate screen buffer (like vim or htop); quitting —
+`q`, `Ctrl+C`, or a `kill` — restores the shell exactly as it was, with no dashboard frames left
+in scrollback.
+
 ## Layout
 
 ```

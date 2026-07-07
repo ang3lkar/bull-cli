@@ -560,6 +560,23 @@ describe('App: footer ticking', () => {
   });
 });
 
+describe('App: fills the terminal height', () => {
+  it('pins the footer to the last row once the terminal reports its size', async () => {
+    const { stdout, lastFrame } = await setup();
+
+    Object.defineProperty(stdout, 'rows', { value: 20, configurable: true });
+    stdout.emit('resize');
+    await flush();
+
+    const lines = (lastFrame() ?? '').split('\n');
+    expect(lines).toHaveLength(20);
+    // Footer is two rows (hints line, then redis-url/last-updated line) —
+    // the bottom-pinned footer means both live at the very end of the frame.
+    expect(lines[lines.length - 2]).toContain('q quit');
+    expect(lines[lines.length - 1]).toContain('Last updated');
+  });
+});
+
 describe('App: footer legend follows focus/state', () => {
   it('shows the sidebar legend, then jobs legend on Tab, then search legend on /, then back on Escape', async () => {
     const { stdin, lastFrame } = await setup();

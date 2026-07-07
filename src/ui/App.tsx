@@ -7,6 +7,7 @@ import { ErrorScreen } from './ErrorScreen.js';
 import { Footer, keyHintsFor } from './Footer.js';
 import { useKeymap } from './hooks/useKeymap.js';
 import { useStore } from './hooks/useStore.js';
+import { useTerminalDimensions } from './hooks/useTerminalDimensions.js';
 import { JobDetailModal } from './JobDetailModal.js';
 import { JobTable } from './JobTable.js';
 import { SearchBar } from './SearchBar.js';
@@ -59,15 +60,26 @@ export function App({ store, onQuit }: AppProps) {
   const snapshot = useStore(store);
   const now = useNow(NOW_TICK_MS);
   useKeymap(store, snapshot, onQuit);
+  // `rows` is the real terminal height once running in the alt-screen buffer
+  // (see `src/terminal.ts`), and `undefined` under ink-testing-library
+  // (whose fake stdout has no `rows`) — `height={undefined}` is a no-op for
+  // Yoga, so every existing test frame is unaffected.
+  const { rows } = useTerminalDimensions();
 
   if (snapshot.connection.state === 'error') {
-    return <ErrorScreen url={snapshot.connection.url} message={snapshot.connection.message} />;
+    return (
+      <Box height={rows}>
+        <ErrorScreen url={snapshot.connection.url} message={snapshot.connection.message} />
+      </Box>
+    );
   }
 
   if (snapshot.queues.length === 0) {
     return (
-      <Box flexDirection="column">
-        <EmptyState url={snapshot.redisUrl} />
+      <Box flexDirection="column" height={rows}>
+        <Box flexGrow={1}>
+          <EmptyState url={snapshot.redisUrl} />
+        </Box>
         <Footer
           redisUrl={snapshot.redisUrl}
           lastUpdatedAt={snapshot.lastUpdatedAt}
@@ -86,8 +98,8 @@ export function App({ store, onQuit }: AppProps) {
   const jobsFocused = snapshot.focus === 'jobs';
 
   return (
-    <Box flexDirection="column">
-      <Box flexDirection="row">
+    <Box flexDirection="column" height={rows}>
+      <Box flexDirection="row" flexGrow={1}>
         <Box width={SIDEBAR_WIDTH} marginRight={1}>
           <Sidebar
             queues={snapshot.queues}
