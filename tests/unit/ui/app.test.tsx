@@ -559,3 +559,23 @@ describe('App: footer ticking', () => {
     expect(lastFrame()).toContain('Last updated: 2s ago');
   });
 });
+
+describe('App: footer legend follows focus/state', () => {
+  it('shows the sidebar legend, then jobs legend on Tab, then search legend on /, then back on Escape', async () => {
+    const { stdin, lastFrame } = await setup();
+
+    expect(lastFrame()).toContain('p pause/resume');
+
+    stdin.write('\t'); // focus jobs
+    await flush();
+    expect(lastFrame()).toContain('r retry');
+
+    stdin.write('/');
+    await flush();
+    expect(lastFrame()).toContain('Enter accept');
+
+    stdin.write(''); // Escape while search input is active
+    await flush();
+    expect(lastFrame()).toContain('r retry');
+  });
+});

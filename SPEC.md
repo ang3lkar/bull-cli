@@ -93,11 +93,15 @@ Consistent columns across all tabs:
 
 ### Footer
 
-Three sections in a single bottom bar:
+Two rows, rendered above the main content's bottom edge:
 
-- **Left:** active Redis connection string (e.g. `redis://localhost:6379`)
-- **Center:** `Last updated: Ns ago` (counts up from last refresh)
-- **Right:** key hint reminders (`/ search  R refresh  q quit`)
+- **Legend row:** a full-width, dim, context-sensitive shortcut legend listing
+  every keybinding available in the current UI state (e.g. sidebar focused,
+  job list focused, search input active, drain confirmation pending, detail
+  modal open) — mirroring the keymap dispatcher's priority order
+- **Bottom bar:** two sections
+  - **Left:** active Redis connection string (e.g. `redis://localhost:6379`)
+  - **Right:** `Last updated: Ns ago` (counts up from last refresh)
 
 ---
 
