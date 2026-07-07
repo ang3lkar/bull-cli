@@ -19,11 +19,21 @@ function makeJob(id: string, name: string, overrides: Partial<JobSummary> = {}):
   return { id, name, attemptsMade: 0, timestamp: 0, progress: null, ...overrides };
 }
 
+const ALL_STATUSES: JobStatus[] = ['active', 'waiting', 'completed', 'failed', 'delayed'];
+
+const ZERO_COUNTS: Record<JobStatus, number> = {
+  active: 0,
+  waiting: 0,
+  completed: 0,
+  failed: 0,
+  delayed: 0,
+};
+
 function paginate(jobs: JobSummary[], page: number): JobPage {
   const pageCount = Math.max(1, Math.ceil(jobs.length / 10));
   const clamped = Math.min(Math.max(page, 0), pageCount - 1);
   const slice = jobs.slice(clamped * 10, clamped * 10 + 10);
-  return { jobs: slice, totalCount: jobs.length, page: clamped, pageCount };
+  return { jobs: slice, totalCount: jobs.length, page: clamped, pageCount, counts: ZERO_COUNTS };
 }
 
 interface FakeState {
@@ -42,12 +52,19 @@ function detailKey(queueName: string, jobId: string): string {
   return `${queueName}::${jobId}`;
 }
 
+function countsForQueue(state: FakeState, queueName: string): Record<JobStatus, number> {
+  return Object.fromEntries(
+    ALL_STATUSES.map((s) => [s, state.jobs[jobKey(queueName, s)]?.length ?? 0]),
+  ) as Record<JobStatus, number>;
+}
+
 function createFakeDeps(state: FakeState): StoreDeps {
   return {
     discoverQueues: vi.fn(async () => state.queues),
-    fetchJobPage: vi.fn(async (queueName: string, status: JobStatus, page: number) =>
-      paginate(state.jobs[jobKey(queueName, status)] ?? [], page),
-    ),
+    fetchJobPage: vi.fn(async (queueName: string, status: JobStatus, page: number) => ({
+      ...paginate(state.jobs[jobKey(queueName, status)] ?? [], page),
+      counts: countsForQueue(state, queueName),
+    })),
     getJobDetail: vi.fn(async (queueName: string, jobId: string) => {
       return state.details[detailKey(queueName, jobId)] ?? null;
     }),
@@ -354,6 +371,48 @@ describe('DashboardStore: refresh', () => {
   });
 });
 
+describe('DashboardStore: tabCounts', () => {
+  it('is null before anything has loaded', () => {
+    const deps = createFakeDeps({ queues: [], jobs: {}, details: {} });
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    expect(store.getSnapshot().tabCounts).toBeNull();
+  });
+
+  it('reflects the per-status job counts for the selected queue and updates when switching queues', async () => {
+    const state: FakeState = {
+      queues: [makeQueue('a'), makeQueue('b')],
+      jobs: {
+        [jobKey('a', 'active')]: [makeJob('a1', 'j1'), makeJob('a2', 'j2')],
+        [jobKey('a', 'waiting')]: [makeJob('a3', 'j3')],
+        [jobKey('b', 'active')]: [],
+        [jobKey('b', 'failed')]: [makeJob('b1', 'j1'), makeJob('b2', 'j2'), makeJob('b3', 'j3')],
+      },
+      details: {},
+    };
+    const deps = createFakeDeps(state);
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+
+    await store.refresh();
+    expect(store.getSnapshot().tabCounts).toEqual({
+      active: 2,
+      waiting: 1,
+      completed: 0,
+      failed: 0,
+      delayed: 0,
+    });
+
+    store.selectQueue('b');
+    await flush();
+    expect(store.getSnapshot().tabCounts).toEqual({
+      active: 0,
+      waiting: 0,
+      completed: 0,
+      failed: 3,
+      delayed: 0,
+    });
+  });
+});
+
 describe('DashboardStore: navigation during an in-flight refresh (regression)', () => {
   it('does not let a completing stale refresh clobber a queue switch made while it was in flight', async () => {
     const state: FakeState = {
@@ -527,7 +586,10 @@ describe('DashboardStore: per-queue fetch failure isolation (regression)', () =>
         if (queueName === 'billing:invoices') {
           throw new Error('Queue name cannot contain :');
         }
-        return paginate(state.jobs[jobKey(queueName, status)] ?? [], page);
+        return {
+          ...paginate(state.jobs[jobKey(queueName, status)] ?? [], page),
+          counts: countsForQueue(state, queueName),
+        };
       },
     );
     const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));

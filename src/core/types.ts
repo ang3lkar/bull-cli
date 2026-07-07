@@ -44,6 +44,8 @@ export interface JobPage {
   totalCount: number;
   page: number;
   pageCount: number;
+  /** Job count for every status tab (not just the requested one), for the tab row's counts. */
+  counts: Record<JobStatus, number>;
 }
 
 /** Ephemeral inline notification, e.g. for a failed job action. */

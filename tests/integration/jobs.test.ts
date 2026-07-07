@@ -61,6 +61,8 @@ describe('fetchJobPage', () => {
     expect(result.totalCount).toBe(3);
     expect(result.jobs).toHaveLength(3);
     expect(result.jobs.map((j) => j.name).sort()).toEqual(['wjob-0', 'wjob-1', 'wjob-2']);
+    expect(result.counts.waiting).toBe(3);
+    expect(result.counts).toEqual({ active: 0, waiting: 3, completed: 0, failed: 0, delayed: 0 });
   });
 
   it('returns delayed jobs', async () => {
@@ -70,6 +72,7 @@ describe('fetchJobPage', () => {
 
     expect(result.totalCount).toBe(2);
     expect(result.jobs.map((j) => j.name).sort()).toEqual(['djob-0', 'djob-1']);
+    expect(result.counts.delayed).toBe(2);
   });
 
   it('returns failed jobs with attemptsMade >= 1', async () => {
@@ -79,6 +82,7 @@ describe('fetchJobPage', () => {
 
       expect(result.totalCount).toBe(2);
       expect(result.jobs).toHaveLength(2);
+      expect(result.counts.failed).toBe(2);
       for (const job of result.jobs) {
         expect(job.attemptsMade).toBeGreaterThanOrEqual(1);
       }
@@ -94,6 +98,7 @@ describe('fetchJobPage', () => {
 
       expect(result.totalCount).toBe(2);
       expect(result.jobs).toHaveLength(2);
+      expect(result.counts.completed).toBe(2);
     } finally {
       await closeSeeded(seeded);
     }
@@ -168,6 +173,7 @@ describe('fetchJobPage', () => {
     expect(result.totalCount).toBe(4);
     expect(result.jobs).toHaveLength(4);
     expect(result.jobs.map((j) => j.name).sort()).toEqual(['pjob-0', 'pjob-1', 'pjob-2', 'pjob-3']);
+    expect(result.counts.waiting).toBe(4);
 
     await queue.resume();
   });

@@ -86,7 +86,7 @@ export function App({ store, onQuit }: AppProps) {
           />
         </Box>
         <Box flexDirection="column" flexGrow={1}>
-          <Tabs active={snapshot.tab} />
+          <Tabs active={snapshot.tab} counts={snapshot.tabCounts} />
           {(snapshot.search.active || snapshot.search.query !== '') && (
             <SearchBar query={snapshot.search.query} active={snapshot.search.active} />
           )}

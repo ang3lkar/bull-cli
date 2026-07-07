@@ -23,11 +23,21 @@ function makeJob(id: string, name: string, overrides: Partial<JobSummary> = {}):
   return { id, name, attemptsMade: 0, timestamp: NOW, progress: null, ...overrides };
 }
 
+const ALL_STATUSES: JobStatus[] = ['active', 'waiting', 'completed', 'failed', 'delayed'];
+
+const ZERO_COUNTS: Record<JobStatus, number> = {
+  active: 0,
+  waiting: 0,
+  completed: 0,
+  failed: 0,
+  delayed: 0,
+};
+
 function paginate(jobs: JobSummary[], page: number): JobPage {
   const pageCount = Math.max(1, Math.ceil(jobs.length / 10));
   const clamped = Math.min(Math.max(page, 0), pageCount - 1);
   const slice = jobs.slice(clamped * 10, clamped * 10 + 10);
-  return { jobs: slice, totalCount: jobs.length, page: clamped, pageCount };
+  return { jobs: slice, totalCount: jobs.length, page: clamped, pageCount, counts: ZERO_COUNTS };
 }
 
 interface FakeState {
@@ -46,12 +56,19 @@ function detailKey(queueName: string, jobId: string): string {
   return `${queueName}::${jobId}`;
 }
 
+function countsForQueue(state: FakeState, queueName: string): Record<JobStatus, number> {
+  return Object.fromEntries(
+    ALL_STATUSES.map((s) => [s, state.jobs[jobKey(queueName, s)]?.length ?? 0]),
+  ) as Record<JobStatus, number>;
+}
+
 function createFakeDeps(state: FakeState): StoreDeps {
   return {
     discoverQueues: vi.fn(async () => state.queues),
-    fetchJobPage: vi.fn(async (queueName: string, status: JobStatus, page: number) =>
-      paginate(state.jobs[jobKey(queueName, status)] ?? [], page),
-    ),
+    fetchJobPage: vi.fn(async (queueName: string, status: JobStatus, page: number) => ({
+      ...paginate(state.jobs[jobKey(queueName, status)] ?? [], page),
+      counts: countsForQueue(state, queueName),
+    })),
     getJobDetail: vi.fn(async (queueName: string, jobId: string) => {
       return state.details[detailKey(queueName, jobId)] ?? null;
     }),

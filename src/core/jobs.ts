@@ -7,6 +7,9 @@ export const PAGE_SIZE = 10;
 
 const COUNT_TYPES = ['active', 'waiting', 'paused', 'completed', 'failed', 'delayed'] as const;
 
+/** All five status tabs, used to build the per-tab counts map from a single `getJobCounts` call. */
+const ALL_STATUSES: JobStatus[] = ['active', 'waiting', 'completed', 'failed', 'delayed'];
+
 /**
  * Total job count for a status tab. A paused queue holds its waiting jobs in
  * the `paused` bucket instead of `waiting` (bullmq moves the whole wait list
@@ -52,6 +55,9 @@ export async function fetchJobPage(
 ): Promise<JobPage> {
   const counts = await queue.getJobCounts(...COUNT_TYPES);
   const totalCount = totalCountForStatus(counts, status);
+  const tabCounts = Object.fromEntries(
+    ALL_STATUSES.map((s) => [s, totalCountForStatus(counts, s)]),
+  ) as Record<JobStatus, number>;
   const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const currentPage = clampPage(page, pageCount);
 
@@ -70,7 +76,7 @@ export async function fetchJobPage(
       progress: normalizeProgress(job.progress),
     }));
 
-  return { jobs: summaries, totalCount, page: currentPage, pageCount };
+  return { jobs: summaries, totalCount, page: currentPage, pageCount, counts: tabCounts };
 }
 
 /**

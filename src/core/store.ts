@@ -75,6 +75,8 @@ export interface DashboardSnapshot {
   tab: JobStatus;
   page: number;
   jobPage: JobPage | null;
+  /** Job count for every status tab, sourced from the latest `jobPage`; `null` before anything has loaded / no queue selected. */
+  tabCounts: Record<JobStatus, number> | null;
   selectedJobId: string | null;
   search: { active: boolean; query: string };
   /** Jobs on the current page after the search filter is applied. */
@@ -197,6 +199,7 @@ export class DashboardStore {
       tab: this.tab,
       page: this.page,
       jobPage: this.jobPage,
+      tabCounts: this.jobPage?.counts ?? null,
       selectedJobId: this.selectedJobId,
       search: { active: this.searchActive, query: this.searchQuery },
       visibleJobs: filterJobs(jobs, this.searchQuery),
