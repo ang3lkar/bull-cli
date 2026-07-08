@@ -204,6 +204,7 @@ describe('DashboardStore: refresh', () => {
     expect(snap.selectedQueueName).toBeNull();
     expect(snap.jobPage).toBeNull();
     expect(snap.selectedJobId).toBeNull();
+    expect(snap.tabCounts).toBeNull();
   });
 
   it('clamps selectedJobId to the nearest remaining job when it vanishes mid-list', async () => {
@@ -410,6 +411,202 @@ describe('DashboardStore: tabCounts', () => {
       failed: 3,
       delayed: 0,
     });
+  });
+
+  it('persists through a tab switch: tabCounts stays while jobPage clears, until the fresh fetch lands', async () => {
+    const state: FakeState = {
+      queues: [makeQueue('a')],
+      jobs: {
+        [jobKey('a', 'active')]: [makeJob('a1', 'j1'), makeJob('a2', 'j2')],
+        [jobKey('a', 'failed')]: [makeJob('a3', 'j3')],
+      },
+      details: {},
+    };
+    const deps = createFakeDeps(state);
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+
+    await store.refresh();
+    const initialCounts = store.getSnapshot().tabCounts;
+    expect(initialCounts).toEqual({
+      active: 2,
+      waiting: 0,
+      completed: 0,
+      failed: 1,
+      delayed: 0,
+    });
+
+    store.selectTab('failed');
+    // Synchronously (before the async refetch resolves): jobPage is reset
+    // by resetQueueOrTabSwitch, but tabCounts must still hold the last-known
+    // values so the tab row doesn't flicker.
+    expect(store.getSnapshot().jobPage).toBeNull();
+    expect(store.getSnapshot().tabCounts).toEqual(initialCounts);
+
+    await flush();
+    // Same queue -> identical counts, now sourced from the fresh fetch.
+    expect(store.getSnapshot().tabCounts).toEqual(initialCounts);
+  });
+
+  it('shows null synchronously when switching to a never-visited queue, then that queue gets its own fresh counts once fetched', async () => {
+    const state: FakeState = {
+      queues: [makeQueue('a'), makeQueue('b')],
+      jobs: {
+        [jobKey('a', 'active')]: [makeJob('a1', 'j1'), makeJob('a2', 'j2')],
+        [jobKey('b', 'active')]: [],
+        [jobKey('b', 'failed')]: [makeJob('b1', 'j1'), makeJob('b2', 'j2'), makeJob('b3', 'j3')],
+      },
+      details: {},
+    };
+    const deps = createFakeDeps(state);
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+
+    await store.refresh();
+    expect(store.getSnapshot().tabCounts).toEqual({
+      active: 2,
+      waiting: 0,
+      completed: 0,
+      failed: 0,
+      delayed: 0,
+    });
+
+    store.selectQueue('b');
+    // Synchronously: 'b' has never been fetched, so nothing is cached for
+    // it yet — this is the per-queue cache's accepted first-visit cost
+    // (distinct from queue 'a's counts, which are never shown for 'b').
+    expect(store.getSnapshot().jobPage).toBeNull();
+    expect(store.getSnapshot().tabCounts).toBeNull();
+
+    await flush();
+    // Replaced by queue b's own fresh counts.
+    expect(store.getSnapshot().tabCounts).toEqual({
+      active: 0,
+      waiting: 0,
+      completed: 0,
+      failed: 3,
+      delayed: 0,
+    });
+  });
+
+  it("shows a previously-visited queue's own cached counts immediately when switching back to it", async () => {
+    const state: FakeState = {
+      queues: [makeQueue('a'), makeQueue('b')],
+      jobs: {
+        [jobKey('a', 'active')]: [makeJob('a1', 'j1'), makeJob('a2', 'j2')],
+        [jobKey('b', 'failed')]: [makeJob('b1', 'j1'), makeJob('b2', 'j2'), makeJob('b3', 'j3')],
+      },
+      details: {},
+    };
+    const deps = createFakeDeps(state);
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+
+    await store.refresh();
+    const countsForA = store.getSnapshot().tabCounts;
+    expect(countsForA).toEqual({
+      active: 2,
+      waiting: 0,
+      completed: 0,
+      failed: 0,
+      delayed: 0,
+    });
+
+    store.selectQueue('b');
+    await flush();
+    const countsForB = store.getSnapshot().tabCounts;
+    expect(countsForB).toEqual({
+      active: 0,
+      waiting: 0,
+      completed: 0,
+      failed: 3,
+      delayed: 0,
+    });
+
+    store.selectQueue('a');
+    // Synchronously, before the refetch resolves: queue a's OWN cached
+    // counts from earlier show immediately — the whole point of caching
+    // per queue rather than caching a single "last known" value.
+    expect(store.getSnapshot().jobPage).toBeNull();
+    expect(store.getSnapshot().tabCounts).toEqual(countsForA);
+
+    await flush();
+    expect(store.getSnapshot().tabCounts).toEqual(countsForA);
+  });
+
+  it('survives a per-queue fetch failure: a queue that starts failing keeps showing its OWN last-known counts', async () => {
+    const state: FakeState = {
+      queues: [makeQueue('emailQ')],
+      jobs: { [jobKey('emailQ', 'active')]: [makeJob('1', 'j1'), makeJob('2', 'j2')] },
+      details: {},
+    };
+    const deps = createFakeDeps(state);
+    let failing = false;
+    (deps.fetchJobPage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (queueName: string, status: JobStatus, page: number) => {
+        if (failing) {
+          throw new Error('temporary Redis blip');
+        }
+        return {
+          ...paginate(state.jobs[jobKey(queueName, status)] ?? [], page),
+          counts: countsForQueue(state, queueName),
+        };
+      },
+    );
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+
+    await store.refresh();
+    const healthyCounts = store.getSnapshot().tabCounts;
+    expect(healthyCounts).toEqual({
+      active: 2,
+      waiting: 0,
+      completed: 0,
+      failed: 0,
+      delayed: 0,
+    });
+
+    failing = true;
+    await store.refresh();
+    const snap = store.getSnapshot();
+    expect(snap.jobPage).toBeNull();
+    expect(snap.tabCounts).toEqual(healthyCounts);
+  });
+
+  it('a queue that fails on every attempt shows null, never a different (cached) queue’s counts', async () => {
+    const state: FakeState = {
+      queues: [makeQueue('a'), makeQueue('billing:invoices')],
+      jobs: { [jobKey('a', 'active')]: [makeJob('a1', 'j1'), makeJob('a2', 'j2')] },
+      details: {},
+    };
+    const deps = createFakeDeps(state);
+    (deps.fetchJobPage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (queueName: string, status: JobStatus, page: number) => {
+        if (queueName === 'billing:invoices') {
+          throw new Error('Queue name cannot contain :');
+        }
+        return {
+          ...paginate(state.jobs[jobKey(queueName, status)] ?? [], page),
+          counts: countsForQueue(state, queueName),
+        };
+      },
+    );
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+
+    // 'a' sorts first alphabetically -> auto-selected and cached.
+    await store.refresh();
+    expect(store.getSnapshot().tabCounts).toEqual({
+      active: 2,
+      waiting: 0,
+      completed: 0,
+      failed: 0,
+      delayed: 0,
+    });
+
+    // 'billing:invoices' has never had a successful fetch: its cache entry
+    // is empty, so it must show `null` — NEVER queue a's cached counts,
+    // even though a's entry is still sitting in the map.
+    store.selectQueue('billing:invoices');
+    await flush();
+    const snap = store.getSnapshot();
+    expect(snap.jobPage).toBeNull();
+    expect(snap.tabCounts).toBeNull();
   });
 });
 

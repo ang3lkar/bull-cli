@@ -75,7 +75,19 @@ export interface DashboardSnapshot {
   tab: JobStatus;
   page: number;
   jobPage: JobPage | null;
-  /** Job count for every status tab, sourced from the latest `jobPage`; `null` before anything has loaded / no queue selected. */
+  /**
+   * Last-known job count for every status tab of the SELECTED queue,
+   * cached per queue name so a tab switch (same queue) or a switch back to
+   * a previously-visited queue shows its own real counts immediately
+   * instead of flickering to bare labels. Only a fresh fetch result for a
+   * given queue replaces that queue's cached entry — a `jobPage === null`
+   * moment (mid tab/queue switch, or that queue's fetch failing) does NOT
+   * clear it, so a queue that starts failing keeps showing its own
+   * last-known counts (never another queue's) for as long as it keeps
+   * failing. `null` when no queue is selected, or when the selected queue
+   * has never had a successful fetch yet (including a queue that fails on
+   * every attempt so far) — there is nothing cached for it to show.
+   */
   tabCounts: Record<JobStatus, number> | null;
   selectedJobId: string | null;
   search: { active: boolean; query: string };
@@ -130,6 +142,8 @@ export class DashboardStore {
   private tab: JobStatus = 'active';
   private page = 0;
   private jobPage: JobPage | null = null;
+  /** Last-known tab counts per queue name; see `DashboardSnapshot.tabCounts`. */
+  private readonly tabCountsByQueue = new Map<string, Record<JobStatus, number>>();
   private selectedJobId: string | null = null;
   private searchActive = false;
   private searchQuery = '';
@@ -199,7 +213,10 @@ export class DashboardStore {
       tab: this.tab,
       page: this.page,
       jobPage: this.jobPage,
-      tabCounts: this.jobPage?.counts ?? null,
+      tabCounts:
+        this.selectedQueueName !== null
+          ? (this.tabCountsByQueue.get(this.selectedQueueName) ?? null)
+          : null,
       selectedJobId: this.selectedJobId,
       search: { active: this.searchActive, query: this.searchQuery },
       visibleJobs: filterJobs(jobs, this.searchQuery),
@@ -386,6 +403,7 @@ export class DashboardStore {
 
         this.page = jobPage.page;
         this.jobPage = jobPage;
+        this.tabCountsByQueue.set(queueName, jobPage.counts);
         this.selectedJobId = this.resolveSelectedJobId(prevSelectedJobId, prevJobs, jobPage.jobs);
       }
       // Success (or nothing to fetch) clears the dedupe tracking, so a
@@ -396,6 +414,17 @@ export class DashboardStore {
         return;
       }
       this.jobPage = null;
+      // Deliberately NOT touching `tabCountsByQueue` here: the cache is
+      // keyed per queue name, so a failing fetch for `queueName` simply
+      // leaves that queue's entry as whatever it last was — its own
+      // last-known counts if it has ever succeeded before, or absent
+      // (snapshot shows `null`) if it never has. Either way it's never
+      // another queue's counts, and the failure is already surfaced via
+      // the toast below. A queue that fails on every attempt keeps
+      // showing its own stale counts (or `null`) indefinitely — the toast
+      // itself only fires once per failure transition (deduped via
+      // `jobFetchErrorQueue`), so the empty job table is the persistent
+      // signal of an ongoing failure.
       this.selectedJobId = null;
       if (this.jobFetchErrorQueue !== queueName) {
         this.jobFetchErrorQueue = queueName;
