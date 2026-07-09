@@ -5,6 +5,7 @@ import { ConfirmPrompt } from './ConfirmPrompt.js';
 import { EmptyState } from './EmptyState.js';
 import { ErrorScreen } from './ErrorScreen.js';
 import { Footer, keyHintsFor } from './Footer.js';
+import { Header } from './Header.js';
 import { useKeymap } from './hooks/useKeymap.js';
 import { useStore } from './hooks/useStore.js';
 import { useTerminalDimensions } from './hooks/useTerminalDimensions.js';
@@ -18,6 +19,8 @@ import { Toast } from './Toast.js';
 export interface AppProps {
   store: DashboardStore;
   onQuit(): void;
+  /** App version for the title bar, from package.json (see `src/cli.tsx`). */
+  version?: string;
 }
 
 /** Fixed sidebar column width (spec's layout diagram shows a narrow left column). */
@@ -56,7 +59,7 @@ function useNow(intervalMs: number): number {
  *   screen — the table lingers underneath so the user isn't staring at a
  *   blank pane while a job's data payload loads.
  */
-export function App({ store, onQuit }: AppProps) {
+export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
   const snapshot = useStore(store);
   const now = useNow(NOW_TICK_MS);
   useKeymap(store, snapshot, onQuit);
@@ -68,15 +71,19 @@ export function App({ store, onQuit }: AppProps) {
 
   if (snapshot.connection.state === 'error') {
     return (
-      <Box height={rows}>
-        <ErrorScreen url={snapshot.connection.url} message={snapshot.connection.message} />
+      <Box flexDirection="column" height={rows} paddingTop={1} paddingX={1}>
+        <Header version={version} />
+        <Box flexGrow={1}>
+          <ErrorScreen url={snapshot.connection.url} message={snapshot.connection.message} />
+        </Box>
       </Box>
     );
   }
 
   if (snapshot.queues.length === 0) {
     return (
-      <Box flexDirection="column" height={rows}>
+      <Box flexDirection="column" height={rows} paddingTop={1} paddingX={1}>
+        <Header version={version} />
         <Box flexGrow={1}>
           <EmptyState url={snapshot.redisUrl} />
         </Box>
@@ -99,6 +106,7 @@ export function App({ store, onQuit }: AppProps) {
 
   return (
     <Box flexDirection="column" height={rows} paddingTop={1} paddingX={1}>
+      <Header version={version} />
       <Box flexDirection="row" flexGrow={1}>
         <Box flexDirection="column" width={SIDEBAR_WIDTH} marginRight={3}>
           <Text bold>Queues</Text>

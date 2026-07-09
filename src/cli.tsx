@@ -83,7 +83,9 @@ function onQuit(): void {
   void shutdown();
 }
 
-const instance = render(<App store={app.store} onQuit={onQuit} />);
+const instance = render(
+  <App store={app.store} onQuit={onQuit} version={cli.pkg.version ?? '0.0.0'} />,
+);
 
 // Ink's default `exitOnCtrlC` intercepts Ctrl+C itself and unmounts on its
 // own — `useInput` (used by `useKeymap`) puts stdin in raw mode, so Ctrl+C
