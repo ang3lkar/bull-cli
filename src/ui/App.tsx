@@ -98,39 +98,49 @@ export function App({ store, onQuit }: AppProps) {
   const jobsFocused = snapshot.focus === 'jobs';
 
   return (
-    <Box flexDirection="column" height={rows}>
+    <Box flexDirection="column" height={rows} paddingTop={1} paddingX={1}>
       <Box flexDirection="row" flexGrow={1}>
-        <Box width={SIDEBAR_WIDTH} marginRight={1}>
-          <Sidebar
-            queues={snapshot.queues}
-            selectedName={snapshot.selectedQueueName}
-            focused={!jobsFocused}
-          />
+        <Box flexDirection="column" width={SIDEBAR_WIDTH} marginRight={3}>
+          <Text bold>Queues</Text>
+          <Box marginTop={1}>
+            <Sidebar
+              queues={snapshot.queues}
+              selectedName={snapshot.selectedQueueName}
+              focused={!jobsFocused}
+            />
+          </Box>
         </Box>
         <Box flexDirection="column" flexGrow={1}>
-          <Tabs active={snapshot.tab} counts={snapshot.tabCounts} />
-          {(snapshot.search.active || snapshot.search.query !== '') && (
-            <SearchBar query={snapshot.search.query} active={snapshot.search.active} />
-          )}
-          {snapshot.confirmDrain ? (
-            <ConfirmPrompt
-              message={`Drain queue "${snapshot.selectedQueueName ?? ''}"? Removes all waiting and delayed jobs. (y/n)`}
-            />
-          ) : snapshot.detail !== null && !snapshot.detailLoading ? (
-            <JobDetailModal detail={snapshot.detail} />
-          ) : (
-            <>
-              {snapshot.detailLoading && <Text dimColor>Loading…</Text>}
-              <JobTable
-                jobs={snapshot.visibleJobs}
-                selectedJobId={snapshot.selectedJobId}
-                page={snapshot.page}
-                pageCount={snapshot.jobPage?.pageCount ?? 1}
-                focused={jobsFocused}
-                now={now}
+          <Text bold>Jobs</Text>
+          <Box flexDirection="column" marginTop={1}>
+            <Box marginBottom={1}>
+              <Tabs active={snapshot.tab} counts={snapshot.tabCounts} />
+            </Box>
+            {(snapshot.search.active || snapshot.search.query !== '') && (
+              <Box marginBottom={1}>
+                <SearchBar query={snapshot.search.query} active={snapshot.search.active} />
+              </Box>
+            )}
+            {snapshot.confirmDrain ? (
+              <ConfirmPrompt
+                message={`Drain queue "${snapshot.selectedQueueName ?? ''}"? Removes all waiting and delayed jobs. (y/n)`}
               />
-            </>
-          )}
+            ) : snapshot.detail !== null && !snapshot.detailLoading ? (
+              <JobDetailModal detail={snapshot.detail} />
+            ) : (
+              <>
+                {snapshot.detailLoading && <Text dimColor>Loading…</Text>}
+                <JobTable
+                  jobs={snapshot.visibleJobs}
+                  selectedJobId={snapshot.selectedJobId}
+                  page={snapshot.page}
+                  pageCount={snapshot.jobPage?.pageCount ?? 1}
+                  focused={jobsFocused}
+                  now={now}
+                />
+              </>
+            )}
+          </Box>
         </Box>
       </Box>
       <Toast toasts={snapshot.toasts} />
