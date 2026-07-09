@@ -16,26 +16,50 @@ export interface KeyHintContext {
   focus: Focus;
 }
 
+/** Separator between shortcuts in the legend line — a small middle dot with hair spacing. */
+const HINT_SEP = ' · ';
+
 /**
  * Builds the context-sensitive shortcut legend string for the current UI
  * state, mirroring the dispatch priority order in `useKeymap.ts` (search
  * input capture > drain confirmation > detail modal > focus-specific
- * bindings).
+ * bindings). Each shortcut is separated by `HINT_SEP`.
  */
 export function keyHintsFor(ctx: KeyHintContext): string {
   if (ctx.searchActive) {
-    return 'Enter accept  Esc clear';
+    return ['Enter accept', 'Esc clear'].join(HINT_SEP);
   }
   if (ctx.confirmDrain) {
-    return 'y confirm  n/Esc cancel';
+    return ['y confirm', 'n/Esc cancel'].join(HINT_SEP);
   }
   if (ctx.detailOpen) {
-    return 'Esc close  q quit';
+    return ['Esc close', 'q quit'].join(HINT_SEP);
   }
   if (ctx.focus === 'sidebar') {
-    return '↑/↓ queues  p pause/resume  D drain  Tab focus  / search  R refresh  q quit';
+    return [
+      '↑/↓ queues',
+      'p pause/resume',
+      'D drain',
+      'Tab focus',
+      '/ search',
+      'R refresh',
+      'q quit',
+    ].join(HINT_SEP);
   }
-  return '↑/↓ jobs  ←/→ 1-5 tabs  PgUp/PgDn page  Enter detail  r retry  d delete  p promote  D drain  Tab focus  / search  R refresh  q quit';
+  return [
+    '↑/↓ jobs',
+    '←/→ 1-5 tabs',
+    'PgUp/PgDn page',
+    'Enter detail',
+    'r retry',
+    'd delete',
+    'p promote',
+    'D drain',
+    'Tab focus',
+    '/ search',
+    'R refresh',
+    'q quit',
+  ].join(HINT_SEP);
 }
 
 /**

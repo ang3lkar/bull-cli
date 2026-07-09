@@ -45,13 +45,13 @@ describe('Footer', () => {
 });
 
 describe('keyHintsFor', () => {
-  it('search input active: "Enter accept  Esc clear"', () => {
+  it('search input active: "Enter accept · Esc clear"', () => {
     expect(
       keyHintsFor({ searchActive: true, confirmDrain: false, detailOpen: false, focus: 'jobs' }),
-    ).toBe('Enter accept  Esc clear');
+    ).toBe('Enter accept · Esc clear');
   });
 
-  it('drain confirmation pending: "y confirm  n/Esc cancel"', () => {
+  it('drain confirmation pending: "y confirm · n/Esc cancel"', () => {
     expect(
       keyHintsFor({
         searchActive: false,
@@ -59,10 +59,10 @@ describe('keyHintsFor', () => {
         detailOpen: false,
         focus: 'sidebar',
       }),
-    ).toBe('y confirm  n/Esc cancel');
+    ).toBe('y confirm · n/Esc cancel');
   });
 
-  it('detail modal open: "Esc close  q quit"', () => {
+  it('detail modal open: "Esc close · q quit"', () => {
     expect(
       keyHintsFor({
         searchActive: false,
@@ -70,7 +70,7 @@ describe('keyHintsFor', () => {
         detailOpen: true,
         focus: 'jobs',
       }),
-    ).toBe('Esc close  q quit');
+    ).toBe('Esc close · q quit');
   });
 
   it('sidebar focused', () => {
@@ -81,7 +81,7 @@ describe('keyHintsFor', () => {
         detailOpen: false,
         focus: 'sidebar',
       }),
-    ).toBe('↑/↓ queues  p pause/resume  D drain  Tab focus  / search  R refresh  q quit');
+    ).toBe('↑/↓ queues · p pause/resume · D drain · Tab focus · / search · R refresh · q quit');
   });
 
   it('job list focused', () => {
@@ -93,19 +93,19 @@ describe('keyHintsFor', () => {
         focus: 'jobs',
       }),
     ).toBe(
-      '↑/↓ jobs  ←/→ 1-5 tabs  PgUp/PgDn page  Enter detail  r retry  d delete  p promote  D drain  Tab focus  / search  R refresh  q quit',
+      '↑/↓ jobs · ←/→ 1-5 tabs · PgUp/PgDn page · Enter detail · r retry · d delete · p promote · D drain · Tab focus · / search · R refresh · q quit',
     );
   });
 
   it('priority: searchActive wins over detailOpen', () => {
     expect(
       keyHintsFor({ searchActive: true, confirmDrain: false, detailOpen: true, focus: 'jobs' }),
-    ).toBe('Enter accept  Esc clear');
+    ).toBe('Enter accept · Esc clear');
   });
 
   it('priority: confirmDrain wins over detailOpen', () => {
     expect(
       keyHintsFor({ searchActive: false, confirmDrain: true, detailOpen: true, focus: 'jobs' }),
-    ).toBe('y confirm  n/Esc cancel');
+    ).toBe('y confirm · n/Esc cancel');
   });
 });
