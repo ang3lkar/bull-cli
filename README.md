@@ -114,7 +114,7 @@ returns to the full list.
 |---|---|
 | `↑` / `↓` | Navigate jobs |
 | `←` / `→` or `1`–`5` | Switch status tabs |
-| `PgUp` / `PgDn` | Paginate job list |
+| `b` / `n` | Previous / next page of the job list |
 | `Enter` | Open job detail modal |
 | `/` | Open search bar (filters by job ID or name) |
 | `r` | Retry job (failed jobs only) |

@@ -93,7 +93,7 @@ describe('keyHintsFor', () => {
         focus: 'jobs',
       }),
     ).toBe(
-      '↑/↓ jobs · ←/→ 1-5 tabs · PgUp/PgDn page · Enter detail · r retry · d delete · p promote · D drain · Tab focus · / search · R refresh · q quit',
+      '↑/↓ jobs · ←/→ 1-5 tabs · b/n page · Enter detail · r retry · d delete · p promote · D drain · Tab focus · / search · R refresh · q quit',
     );
   });
 

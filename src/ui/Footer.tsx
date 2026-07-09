@@ -49,7 +49,7 @@ export function keyHintsFor(ctx: KeyHintContext): string {
   return [
     '↑/↓ jobs',
     '←/→ 1-5 tabs',
-    'PgUp/PgDn page',
+    'b/n page',
     'Enter detail',
     'r retry',
     'd delete',

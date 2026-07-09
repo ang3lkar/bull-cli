@@ -148,7 +148,7 @@ Two rows, rendered above the main content's bottom edge:
 |---|---|
 | `↑` / `↓` | Navigate jobs |
 | `←` / `→` or `1–5` | Switch status tabs |
-| `PgUp` / `PgDn` | Paginate job list |
+| `b` / `n` | Previous / next page of the job list |
 | `Enter` | Open job detail modal |
 | `/` | Open search bar |
 | `r` | Retry job (failed jobs only) |

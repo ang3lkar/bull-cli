@@ -226,11 +226,11 @@ function handleJobsInput(
     store.selectTab(Number(input));
     return;
   }
-  if (key.pageUp) {
+  if (input === 'b') {
     store.prevPage();
     return;
   }
-  if (key.pageDown) {
+  if (input === 'n') {
     store.nextPage();
     return;
   }

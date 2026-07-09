@@ -249,7 +249,7 @@ describe('App: tab switching', () => {
 });
 
 describe('App: pagination', () => {
-  it('PgUp/PgDn paginate the job list', async () => {
+  it('b/n paginate the job list', async () => {
     const { store, stdin, lastFrame } = await setup();
     stdin.write('\t'); // focus jobs
     await flush();
@@ -258,12 +258,12 @@ describe('App: pagination', () => {
 
     expect(lastFrame()).toContain('Page 1 of 2');
 
-    stdin.write('[6~'); // PgDn
+    stdin.write('n'); // next page
     await flush();
     expect(store.getSnapshot().page).toBe(1);
     expect(lastFrame()).toContain('Page 2 of 2');
 
-    stdin.write('[5~'); // PgUp
+    stdin.write('b'); // previous page
     await flush();
     expect(store.getSnapshot().page).toBe(0);
     expect(lastFrame()).toContain('Page 1 of 2');
