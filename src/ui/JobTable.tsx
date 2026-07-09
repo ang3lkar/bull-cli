@@ -18,6 +18,8 @@ const NAME_WIDTH = 16;
 const ATTEMPTS_WIDTH = 8;
 const TIMESTAMP_WIDTH = 19; // `formatClock` always produces exactly 19 chars.
 const PROGRESS_WIDTH = 8;
+/** Blank columns between each field, so values don't butt up against each other. */
+const COL_GAP = '   ';
 
 /** Truncates `s` to `width` chars, replacing the last char with `…` when it doesn't fit — simple, predictable, and easy to unit-test (no Ink text-wrapping involved). */
 function truncate(s: string, width: number): string {
@@ -32,6 +34,11 @@ function truncate(s: string, width: number): string {
 
 function cell(value: string, width: number): string {
   return truncate(value, width).padEnd(width);
+}
+
+/** Like `cell`, but right-aligns within `width` — the convention for numeric columns (Attempts, Progress) so digits line up by place value. */
+function rightCell(value: string, width: number): string {
+  return truncate(value, width).padStart(width);
 }
 
 function selectionMarker(isSelected: boolean, focused: boolean): string {
@@ -50,10 +57,10 @@ function headerLine(): string {
     '  ',
     cell('ID', ID_WIDTH),
     cell('Name', NAME_WIDTH),
-    cell('Attempts', ATTEMPTS_WIDTH),
+    rightCell('Attempts', ATTEMPTS_WIDTH),
     cell('Timestamp', TIMESTAMP_WIDTH),
-    cell('Progress', PROGRESS_WIDTH),
-  ].join(' ');
+    rightCell('Progress', PROGRESS_WIDTH),
+  ].join(COL_GAP);
 }
 
 function rowLine(job: JobSummary, isSelected: boolean, focused: boolean): string {
@@ -61,10 +68,10 @@ function rowLine(job: JobSummary, isSelected: boolean, focused: boolean): string
     selectionMarker(isSelected, focused),
     cell(job.id, ID_WIDTH),
     cell(job.name, NAME_WIDTH),
-    cell(String(job.attemptsMade), ATTEMPTS_WIDTH),
+    rightCell(String(job.attemptsMade), ATTEMPTS_WIDTH),
     cell(formatClock(job.timestamp), TIMESTAMP_WIDTH),
-    cell(progressLabel(job.progress), PROGRESS_WIDTH),
-  ].join(' ');
+    rightCell(progressLabel(job.progress), PROGRESS_WIDTH),
+  ].join(COL_GAP);
 }
 
 /** Job list table: ID | Name | Attempts | Timestamp | Progress, plus a bottom-right page indicator. Rows/pages already come pre-filtered/paginated from the store — purely presentational. */
