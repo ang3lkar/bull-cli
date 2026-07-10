@@ -24,7 +24,7 @@ export interface AppProps {
 }
 
 /** Fixed sidebar column width (spec's layout diagram shows a narrow left column). */
-const SIDEBAR_WIDTH = 24;
+const SIDEBAR_WIDTH = 29;
 /** How often the footer's "Last updated: Ns ago" counter re-renders. */
 const NOW_TICK_MS = 1000;
 
