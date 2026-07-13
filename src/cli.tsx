@@ -1,10 +1,42 @@
 #!/usr/bin/env node
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { render } from 'ink';
 import meow from 'meow';
-import { resolvePrefix, resolveRedisUrl } from './config.js';
+import {
+  ConfigError,
+  parseConfigFile,
+  projectConfigPath,
+  resolvePrefix,
+  resolveRedisUrl,
+  resolveRefreshIntervalMs,
+  type UserConfig,
+  userConfigPath,
+} from './config.js';
 import { createAltScreen } from './terminal.js';
 import { App } from './ui/App.js';
 import { createApp } from './wiring.js';
+
+/**
+ * Reads and validates one optional config file. A missing file is fine
+ * (returns `null`); a present-but-broken one (bad syntax, unknown key,
+ * invalid value) prints a stderr error and exits before the alt screen is
+ * entered — same fail-fast treatment as the TTY guard below, since a
+ * config file is something the user deliberately wrote and a silent
+ * fallback would leave them staring at a dashboard that mysteriously
+ * ignored their setting.
+ */
+function loadConfigFile(filePath: string): UserConfig | null {
+  if (!existsSync(filePath)) {
+    return null;
+  }
+  try {
+    return parseConfigFile(readFileSync(filePath, 'utf8'), filePath);
+  } catch (err) {
+    console.error(err instanceof ConfigError ? err.message : String(err));
+    process.exit(1);
+  }
+}
 
 const cli = meow(
   `
@@ -45,6 +77,10 @@ const cli = meow(
 const redisUrl = resolveRedisUrl(cli.flags.redis, process.env);
 const prefix = resolvePrefix(cli.flags.prefix, process.env);
 
+const userConfig = loadConfigFile(userConfigPath(process.env, homedir()));
+const projectConfig = loadConfigFile(projectConfigPath(process.cwd()));
+const refreshIntervalMs = resolveRefreshIntervalMs(userConfig, projectConfig);
+
 if (!process.stdin.isTTY) {
   console.error('bull-cli requires an interactive terminal (TTY)');
   process.exit(1);
@@ -75,7 +111,7 @@ function onFatal(error: unknown): void {
 process.on('uncaughtException', onFatal);
 process.on('unhandledRejection', onFatal);
 
-const app = createApp(redisUrl, prefix);
+const app = createApp(redisUrl, prefix, refreshIntervalMs);
 
 let shuttingDown = false;
 

@@ -11,7 +11,7 @@ npm install -g bull-cli
 ```
 
 Requires Node.js >= 20 and a reachable Redis instance with one or more BullMQ queues (auto-discovered
-by scanning for `bull:*:meta` keys — no configuration file needed).
+by scanning for `bull:*:meta` keys — no configuration file is required to get started).
 
 ## Usage
 
@@ -59,6 +59,32 @@ bull-cli --prefix myapp
 It runs fullscreen, in the terminal's alternate screen buffer (like vim or htop); quitting —
 `q`, `Ctrl+C`, or a `kill` — restores the shell exactly as it was, with no dashboard frames left
 in scrollback.
+
+## Configuration
+
+Everything works with zero configuration. An optional JSONC (JSON with `//` and `/* */` comments,
+and trailing commas allowed) config file lets you override defaults that aren't worth a CLI flag —
+currently just the dashboard's auto-refresh interval.
+
+Two locations are checked, both optional; if a project file is present, it's merged over the user
+file key-by-key:
+
+1. `bull-cli.json` in the current directory (project-level)
+2. `$XDG_CONFIG_HOME/bull-cli/config.json`, or `~/.config/bull-cli/config.json` if
+   `XDG_CONFIG_HOME` isn't set (user-level)
+
+```jsonc
+// bull-cli.json (or ~/.config/bull-cli/config.json)
+{
+  // How often the dashboard polls Redis for updates, in milliseconds.
+  // Must be an integer >= 250. Defaults to 3000.
+  "refreshIntervalMs": 3000,
+}
+```
+
+A present-but-invalid config file (bad JSON, an unrecognized key, or an out-of-range value) is a
+hard error — `bull-cli` prints the problem to stderr and exits rather than silently ignoring it.
+A missing file is perfectly fine and just falls back to defaults.
 
 ## Layout
 

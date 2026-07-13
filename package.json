@@ -31,6 +31,7 @@
     "bullmq": "^5",
     "ink": "^6",
     "ioredis": "^5",
+    "jsonc-parser": "^3.3.1",
     "meow": "^13",
     "react": "^19"
   },

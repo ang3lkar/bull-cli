@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { resolvePrefix, resolveRedisUrl } from '../../src/config.js';
+import {
+  ConfigError,
+  parseConfigFile,
+  projectConfigPath,
+  resolvePrefix,
+  resolveRedisUrl,
+  resolveRefreshIntervalMs,
+  userConfigPath,
+} from '../../src/config.js';
 
 describe('resolveRedisUrl', () => {
   it('prefers the flag over env and default', () => {
@@ -112,5 +120,137 @@ describe('resolvePrefix', () => {
 
   it('treats an empty-string BULLMQ_PREFIX env var as absent', () => {
     expect(resolvePrefix(undefined, { BULLMQ_PREFIX: '' })).toBe('bull');
+  });
+});
+
+describe('userConfigPath', () => {
+  it('uses XDG_CONFIG_HOME when set', () => {
+    expect(userConfigPath({ XDG_CONFIG_HOME: '/custom/config' }, '/home/user')).toBe(
+      '/custom/config/bull-cli/config.json',
+    );
+  });
+
+  it('falls back to <home>/.config when XDG_CONFIG_HOME is unset', () => {
+    expect(userConfigPath({}, '/home/user')).toBe('/home/user/.config/bull-cli/config.json');
+  });
+
+  it('treats a whitespace-only XDG_CONFIG_HOME as absent', () => {
+    expect(userConfigPath({ XDG_CONFIG_HOME: '   ' }, '/home/user')).toBe(
+      '/home/user/.config/bull-cli/config.json',
+    );
+  });
+});
+
+describe('projectConfigPath', () => {
+  it('joins bull-cli.json onto the given cwd', () => {
+    expect(projectConfigPath('/repo/project')).toBe('/repo/project/bull-cli.json');
+  });
+});
+
+describe('parseConfigFile', () => {
+  it('parses an empty object', () => {
+    expect(parseConfigFile('{}', 'config.json')).toEqual({});
+  });
+
+  it('parses a valid refreshIntervalMs', () => {
+    expect(parseConfigFile('{"refreshIntervalMs": 5000}', 'config.json')).toEqual({
+      refreshIntervalMs: 5000,
+    });
+  });
+
+  it('supports line and block comments (JSONC)', () => {
+    const source = `{
+      // how often to poll
+      "refreshIntervalMs": 5000 /* ms */
+    }`;
+    expect(parseConfigFile(source, 'config.json')).toEqual({ refreshIntervalMs: 5000 });
+  });
+
+  it('supports a trailing comma', () => {
+    expect(parseConfigFile('{"refreshIntervalMs": 5000,}', 'config.json')).toEqual({
+      refreshIntervalMs: 5000,
+    });
+  });
+
+  it('throws ConfigError with the file path on a syntax error', () => {
+    expect(() => parseConfigFile('{not valid json', 'bad.json')).toThrow(ConfigError);
+    expect(() => parseConfigFile('{not valid json', 'bad.json')).toThrow(/bad\.json/);
+  });
+
+  it('throws when the top level is not an object', () => {
+    expect(() => parseConfigFile('[1, 2, 3]', 'config.json')).toThrow(ConfigError);
+    expect(() => parseConfigFile('"just a string"', 'config.json')).toThrow(ConfigError);
+  });
+
+  it('throws on an unknown key', () => {
+    expect(() => parseConfigFile('{"pollFrequency": 5000}', 'config.json')).toThrow(
+      /unknown config key "pollFrequency"/,
+    );
+  });
+
+  it('suggests the correct key for a near-miss typo', () => {
+    expect(() => parseConfigFile('{"refreshIntervalMS": 5000}', 'config.json')).toThrow(
+      /did you mean "refreshIntervalMs"/,
+    );
+  });
+
+  it('omits a suggestion when nothing is close enough', () => {
+    expect(() => parseConfigFile('{"totallyUnrelatedSetting": 1}', 'config.json')).toThrow(
+      /unknown config key "totallyUnrelatedSetting"$/,
+    );
+  });
+
+  it('throws when refreshIntervalMs is not a number', () => {
+    expect(() => parseConfigFile('{"refreshIntervalMs": "3000"}', 'config.json')).toThrow(
+      /must be an integer/,
+    );
+  });
+
+  it('throws when refreshIntervalMs is not an integer', () => {
+    expect(() => parseConfigFile('{"refreshIntervalMs": 3000.5}', 'config.json')).toThrow(
+      /must be an integer/,
+    );
+  });
+
+  it('throws when refreshIntervalMs is below the floor, with a seconds hint', () => {
+    expect(() => parseConfigFile('{"refreshIntervalMs": 3}', 'config.json')).toThrow(
+      /must be >= 250, got: 3 — did you mean 3000 \(3 seconds\)\?/,
+    );
+  });
+
+  it('throws when refreshIntervalMs is negative, without a seconds hint', () => {
+    expect(() => parseConfigFile('{"refreshIntervalMs": -100}', 'config.json')).toThrow(
+      /must be >= 250, got: -100$/,
+    );
+  });
+
+  it('accepts exactly the floor value', () => {
+    expect(parseConfigFile('{"refreshIntervalMs": 250}', 'config.json')).toEqual({
+      refreshIntervalMs: 250,
+    });
+  });
+});
+
+describe('resolveRefreshIntervalMs', () => {
+  it('defaults to 3000 when neither config is present', () => {
+    expect(resolveRefreshIntervalMs(null, null)).toBe(3000);
+  });
+
+  it('uses the user config when only it is present', () => {
+    expect(resolveRefreshIntervalMs({ refreshIntervalMs: 5000 }, null)).toBe(5000);
+  });
+
+  it('uses the project config when only it is present', () => {
+    expect(resolveRefreshIntervalMs(null, { refreshIntervalMs: 1000 })).toBe(1000);
+  });
+
+  it('prefers the project config over the user config', () => {
+    expect(resolveRefreshIntervalMs({ refreshIntervalMs: 5000 }, { refreshIntervalMs: 1000 })).toBe(
+      1000,
+    );
+  });
+
+  it('falls back to the default when both configs are present but neither sets the key', () => {
+    expect(resolveRefreshIntervalMs({}, {})).toBe(3000);
   });
 });

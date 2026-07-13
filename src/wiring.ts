@@ -83,7 +83,7 @@ async function safeAction(
  * exercised end-to-end by the Phase 9 e2e tests rather than unit-tested in
  * isolation.
  */
-export function createApp(redisUrl: string, prefix: string): WiredApp {
+export function createApp(redisUrl: string, prefix: string, pollIntervalMs?: number): WiredApp {
   const registry = createQueueRegistry(connectionFromUrl(redisUrl), prefix);
 
   const redis = createRedisClient(redisUrl, (status) => {
@@ -110,7 +110,7 @@ export function createApp(redisUrl: string, prefix: string): WiredApp {
     syncRegistry: (names) => registry.sync(names),
   };
 
-  const store = new DashboardStore(deps, { redisUrl });
+  const store = new DashboardStore(deps, { redisUrl, pollIntervalMs });
 
   async function start(): Promise<void> {
     await redis.connect().catch(() => {
