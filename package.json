@@ -3,7 +3,25 @@
   "version": "0.1.0",
   "type": "module",
   "description": "A terminal dashboard (TUI) for BullMQ job queues.",
+  "keywords": [
+    "bullmq",
+    "redis",
+    "queue",
+    "tui",
+    "cli",
+    "dashboard",
+    "ink"
+  ],
   "license": "MIT",
+  "author": "Angelos Karagkiozidis",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ang3lkar/bull-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ang3lkar/bull-cli/issues"
+  },
+  "homepage": "https://github.com/ang3lkar/bull-cli#readme",
   "engines": {
     "node": ">=20"
   },
