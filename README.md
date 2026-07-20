@@ -146,7 +146,16 @@ returns to the full list.
 | `r` | Retry job (failed jobs only) |
 | `d` | Delete job |
 | `p` | Promote delayed job to waiting |
+| `c` | Duplicate job — clones its payload as a new delayed job (with confirmation prompt) |
 | `Shift+D` | Drain queue (with confirmation prompt) |
+
+### Job detail modal (open)
+
+| Key | Action |
+|---|---|
+| `c` | Duplicate the shown job (with confirmation prompt) |
+| `Escape` | Close the modal |
+| `q` | Quit |
 
 ## Development
 

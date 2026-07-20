@@ -76,6 +76,7 @@ function createFakeDeps(state: FakeState): StoreDeps {
       retry: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       delete: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       promote: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
+      duplicate: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       togglePause: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       drain: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
     },
@@ -456,6 +457,70 @@ describe('App: job actions', () => {
     stdin.write('p');
     await flush();
     expect(deps.actions.promote).toHaveBeenCalledWith('emailQ', 'd1');
+  });
+});
+
+describe('App: duplicate flow', () => {
+  it('c shows a confirm prompt; y duplicates, n cancels, Escape cancels', async () => {
+    const { store, stdin, deps, lastFrame } = await setup();
+    stdin.write('\t'); // focus jobs
+    await flush();
+    expect(store.getSnapshot().selectedJobId).toBe('a1');
+
+    stdin.write('c');
+    await flush();
+    expect(store.getSnapshot().confirmDuplicateJobId).toBe('a1');
+    expect(lastFrame()).toContain('Duplicate job a1');
+
+    stdin.write('n');
+    await flush();
+    expect(store.getSnapshot().confirmDuplicateJobId).toBeNull();
+    expect(deps.actions.duplicate).not.toHaveBeenCalled();
+
+    stdin.write('c');
+    await flush();
+    stdin.write(''); // Escape cancels too
+    await flush();
+    expect(store.getSnapshot().confirmDuplicateJobId).toBeNull();
+    expect(deps.actions.duplicate).not.toHaveBeenCalled();
+
+    stdin.write('c');
+    await flush();
+    stdin.write('y');
+    await flush();
+    expect(deps.actions.duplicate).toHaveBeenCalledWith('emailQ', 'a1');
+    expect(store.getSnapshot().confirmDuplicateJobId).toBeNull();
+  });
+
+  it('c is a no-op while the sidebar is focused', async () => {
+    const { store, stdin } = await setup();
+    expect(store.getSnapshot().focus).toBe('sidebar');
+
+    stdin.write('c');
+    await flush();
+    expect(store.getSnapshot().confirmDuplicateJobId).toBeNull();
+  });
+
+  it('c also duplicates from the open detail modal, which stays open afterwards', async () => {
+    const { store, stdin, deps, lastFrame } = await setup();
+    stdin.write('\t'); // focus jobs
+    await flush();
+    stdin.write('4'); // failed tab -> job f1, which has detail fixture data
+    await flush();
+    stdin.write('\r'); // open detail for f1
+    await flush();
+    expect(store.getSnapshot().detail?.id).toBe('f1');
+
+    stdin.write('c');
+    await flush();
+    expect(store.getSnapshot().confirmDuplicateJobId).toBe('f1');
+    expect(lastFrame()).toContain('Duplicate job f1');
+
+    stdin.write('y');
+    await flush();
+    expect(deps.actions.duplicate).toHaveBeenCalledWith('emailQ', 'f1');
+    expect(store.getSnapshot().confirmDuplicateJobId).toBeNull();
+    expect(store.getSnapshot().detail?.id).toBe('f1'); // modal still open
   });
 });
 

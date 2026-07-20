@@ -72,6 +72,7 @@ function createFakeDeps(state: FakeState): StoreDeps {
       retry: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       delete: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       promote: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
+      duplicate: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       togglePause: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       drain: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
     },
@@ -1408,6 +1409,104 @@ describe('DashboardStore: drain flow', () => {
     store.requestDrain();
     await store.confirmDrain();
     expect(store.getSnapshot().toasts.map((t) => t.message)).toEqual(['Custom drained message']);
+  });
+});
+
+describe('DashboardStore: duplicate flow', () => {
+  const stateWithJob = (): FakeState => ({
+    queues: [makeQueue('a')],
+    jobs: { [jobKey('a', 'active')]: [makeJob('1', 'j1')] },
+    details: {},
+  });
+
+  it('requires request -> confirm; cancel aborts without calling the action', async () => {
+    const deps = createFakeDeps(stateWithJob());
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+
+    store.cancelDuplicate(); // no-op, nothing pending
+    expect(store.getSnapshot().confirmDuplicateJobId).toBeNull();
+
+    store.requestDuplicate();
+    expect(store.getSnapshot().confirmDuplicateJobId).toBe('1');
+    store.requestDuplicate(); // no-op, already pending
+
+    store.cancelDuplicate();
+    expect(store.getSnapshot().confirmDuplicateJobId).toBeNull();
+    expect(deps.actions.duplicate).not.toHaveBeenCalled();
+
+    store.requestDuplicate();
+    await store.confirmDuplicate();
+    expect(store.getSnapshot().confirmDuplicateJobId).toBeNull();
+    expect(deps.actions.duplicate).toHaveBeenCalledWith('a', '1');
+    expect(store.getSnapshot().toasts.map((t) => t.message)).toEqual(['Job 1 duplicated']);
+  });
+
+  it('confirmDuplicate without a prior request is a no-op', async () => {
+    const deps = createFakeDeps({ queues: [], jobs: {}, details: {} });
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.confirmDuplicate();
+    expect(deps.actions.duplicate).not.toHaveBeenCalled();
+  });
+
+  it('requestDuplicate is a no-op when no job is selected', async () => {
+    const deps = createFakeDeps({ queues: [makeQueue('a')], jobs: {}, details: {} });
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh(); // queue selected, but its tab has no jobs
+    store.requestDuplicate();
+    expect(store.getSnapshot().confirmDuplicateJobId).toBeNull();
+  });
+
+  it('confirming acts on the job captured at request time, not the drifted selection', async () => {
+    const state = stateWithJob();
+    state.jobs[jobKey('a', 'active')] = [makeJob('1', 'j1'), makeJob('2', 'j2')];
+    const deps = createFakeDeps(state);
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+
+    store.requestDuplicate(); // captures job '1'
+    // Job '1' vanishes and a poll refresh re-resolves the selection to '2'
+    // while the prompt is still up.
+    state.jobs[jobKey('a', 'active')] = [makeJob('2', 'j2')];
+    await store.refresh();
+    expect(store.getSnapshot().selectedJobId).toBe('2');
+    expect(store.getSnapshot().confirmDuplicateJobId).toBe('1');
+
+    await store.confirmDuplicate();
+    expect(deps.actions.duplicate).toHaveBeenCalledWith('a', '1');
+  });
+
+  it('toasts the failure message when duplicate fails, without refreshing', async () => {
+    const deps = createFakeDeps(stateWithJob());
+    (deps.actions.duplicate as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: false,
+      message: 'duplicate failed',
+    });
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+    const callsBefore = (deps.discoverQueues as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    store.requestDuplicate();
+    await store.confirmDuplicate();
+
+    expect(store.getSnapshot().toasts.map((t) => t.message)).toEqual(['duplicate failed']);
+    expect(deps.discoverQueues).toHaveBeenCalledTimes(callsBefore);
+  });
+
+  it('uses a custom info message from the action result when present', async () => {
+    const deps = createFakeDeps(stateWithJob());
+    (deps.actions.duplicate as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      info: 'Job 1 duplicated as delayed job 42',
+    });
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+
+    store.requestDuplicate();
+    await store.confirmDuplicate();
+    expect(store.getSnapshot().toasts.map((t) => t.message)).toEqual([
+      'Job 1 duplicated as delayed job 42',
+    ]);
   });
 });
 

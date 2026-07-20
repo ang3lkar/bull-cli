@@ -5,6 +5,7 @@ import type { ConnectionOpts } from '../../src/config.js';
 import {
   deleteJob,
   drainQueue,
+  duplicateJob,
   pauseQueue,
   promoteJob,
   resumeQueue,
@@ -172,6 +173,58 @@ describe('promoteJob', () => {
 
   it('reports not found for a missing job id', async () => {
     const result = await promoteJob(queue, 'does-not-exist');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toMatch(/not found/i);
+    }
+  });
+});
+
+describe('duplicateJob', () => {
+  it('adds a delayed clone with the same name and payload, leaving the original untouched', async () => {
+    const original = await queue.add(
+      'send-email',
+      { to: 'a@b.com', body: 'hi' },
+      { attempts: 5, priority: 2 },
+    );
+    const originalId = String(original.id);
+
+    const result = await duplicateJob(queue, originalId);
+
+    expect(result.ok).toBe(true);
+    // A job added with `priority` sits in bullmq's `prioritized` bucket, not
+    // `waiting` — the clone starts `delayed` regardless.
+    const counts = await queue.getJobCounts('prioritized', 'delayed');
+    expect(counts.prioritized).toBe(1);
+    expect(counts.delayed).toBe(1);
+
+    const [clone] = await queue.getDelayed();
+    expect(clone).toBeDefined();
+    expect(String(clone?.id)).not.toBe(originalId);
+    expect(clone?.name).toBe('send-email');
+    expect(clone?.data).toEqual({ to: 'a@b.com', body: 'hi' });
+    expect(clone?.opts.attempts).toBe(5);
+    expect(clone?.opts.priority).toBe(2);
+
+    // The original is untouched, still queued in its prioritized state.
+    await expect(queue.getJob(originalId).then((j) => j?.getState())).resolves.toBe('prioritized');
+  });
+
+  it('does not reuse a custom jobId — the clone gets a fresh id', async () => {
+    await queue.add('custom', { n: 1 }, { jobId: 'my-custom-id' });
+
+    const result = await duplicateJob(queue, 'my-custom-id');
+
+    expect(result.ok).toBe(true);
+    const [clone] = await queue.getDelayed();
+    expect(clone).toBeDefined();
+    expect(String(clone?.id)).not.toBe('my-custom-id');
+    expect(clone?.data).toEqual({ n: 1 });
+  });
+
+  it('reports not found for a missing job id', async () => {
+    const result = await duplicateJob(queue, 'does-not-exist');
 
     expect(result.ok).toBe(false);
     if (!result.ok) {

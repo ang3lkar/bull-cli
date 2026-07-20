@@ -94,6 +94,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
           hints={keyHintsFor({
             searchActive: snapshot.search.active,
             confirmDrain: snapshot.confirmDrain,
+            confirmDuplicate: snapshot.confirmDuplicateJobId !== null,
             detailOpen: snapshot.detail !== null,
             focus: snapshot.focus,
           })}
@@ -133,6 +134,10 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
               <ConfirmPrompt
                 message={`Drain queue "${snapshot.selectedQueueName ?? ''}"? Removes all waiting and delayed jobs. (y/n)`}
               />
+            ) : snapshot.confirmDuplicateJobId !== null ? (
+              <ConfirmPrompt
+                message={`Duplicate job ${snapshot.confirmDuplicateJobId}? Adds a new delayed job with the same payload. (y/n)`}
+              />
             ) : snapshot.detail !== null && !snapshot.detailLoading ? (
               <JobDetailModal detail={snapshot.detail} />
             ) : (
@@ -159,6 +164,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
         hints={keyHintsFor({
           searchActive: snapshot.search.active,
           confirmDrain: snapshot.confirmDrain,
+          confirmDuplicate: snapshot.confirmDuplicateJobId !== null,
           detailOpen: snapshot.detail !== null,
           focus: snapshot.focus,
         })}

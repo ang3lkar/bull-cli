@@ -89,6 +89,53 @@ export async function promoteJob(queue: Queue, jobId: string): Promise<ActionRes
   }
 }
 
+/**
+ * How far in the future a duplicated job is scheduled. The point of `c`
+ * (clone) is to park the copy under the Delayed tab so the user can inspect
+ * it and `p`romote it when ready — not to have a worker snap it up
+ * immediately — so the delay is deliberately long rather than "soon".
+ */
+export const DUPLICATE_DELAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Duplicates a job: adds a NEW job to the same queue with the same name,
+ * payload (`data`), and options, scheduled `DUPLICATE_DELAY_MS` in the
+ * future so it lands in the `delayed` bucket. Options that would tie the
+ * clone back to the original (or make the add a no-op) are stripped:
+ * - `jobId`: an explicit custom id would collide with the original — bullmq
+ *   silently returns the EXISTING job for a duplicate id, so keeping it
+ *   would make "duplicate" do nothing at all.
+ * - `repeat`/`repeatJobKey`: cloning one instance of a repeatable job must
+ *   not register a whole new repeat schedule (or point back at the
+ *   original's repeat key).
+ * - `deduplication` (and its deprecated `debounce` alias): would let the
+ *   still-existing original suppress the clone for the dedup window.
+ * - `timestamp`/`delay`: recomputed for the clone.
+ */
+export async function duplicateJob(queue: Queue, jobId: string): Promise<ActionResult> {
+  try {
+    const job = await queue.getJob(jobId);
+    if (!job) {
+      return { ok: false, message: `Job ${jobId} not found` };
+    }
+
+    const {
+      jobId: _jobId,
+      repeat: _repeat,
+      repeatJobKey: _repeatJobKey,
+      deduplication: _deduplication,
+      debounce: _debounce,
+      timestamp: _timestamp,
+      delay: _delay,
+      ...opts
+    } = job.opts;
+    const clone = await queue.add(job.name, job.data, { ...opts, delay: DUPLICATE_DELAY_MS });
+    return { ok: true, info: `Job ${jobId} duplicated as delayed job ${clone.id}` };
+  } catch (err) {
+    return { ok: false, message: `Could not duplicate job ${jobId}: ${toMessage(err)}` };
+  }
+}
+
 /** Pauses a queue: no new jobs move from `waiting` to `active`. */
 export async function pauseQueue(queue: Queue): Promise<ActionResult> {
   try {

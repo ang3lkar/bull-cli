@@ -1,7 +1,9 @@
 import type { Job, Queue } from 'bullmq';
 import { describe, expect, it } from 'vitest';
 import {
+  DUPLICATE_DELAY_MS,
   drainQueue,
+  duplicateJob,
   pauseQueue,
   promoteJob,
   resumeQueue,
@@ -89,6 +91,67 @@ describe('promoteJob error mapping', () => {
     const result = await promoteJob(queue, 'job-1');
 
     expect(result).toEqual({ ok: false, message: 'promote boom' });
+  });
+});
+
+describe('duplicateJob', () => {
+  it('adds a clone with the same name/data, a fresh delay, and identity opts stripped', async () => {
+    const added: Array<{ name: string; data: unknown; opts: unknown }> = [];
+    const queue = fakeQueue({
+      getJob: async () =>
+        fakeJob({
+          name: 'send-email',
+          data: { to: 'a@b.com' },
+          opts: {
+            jobId: 'custom-id',
+            repeat: { every: 1000 },
+            deduplication: { id: 'dedup' },
+            timestamp: 123,
+            delay: 456,
+            attempts: 5,
+            priority: 2,
+          },
+        } as unknown as Partial<Job>),
+      add: (async (name: string, data: unknown, opts: unknown) => {
+        added.push({ name, data, opts });
+        return fakeJob({ id: 'clone-1' } as unknown as Partial<Job>);
+      }) as unknown as Queue['add'],
+    });
+
+    const result = await duplicateJob(queue, 'job-1');
+
+    expect(result).toEqual({ ok: true, info: 'Job job-1 duplicated as delayed job clone-1' });
+    expect(added).toEqual([
+      {
+        name: 'send-email',
+        data: { to: 'a@b.com' },
+        opts: { attempts: 5, priority: 2, delay: DUPLICATE_DELAY_MS },
+      },
+    ]);
+  });
+
+  it('reports not found for a missing job id', async () => {
+    const queue = fakeQueue({ getJob: async () => undefined });
+
+    const result = await duplicateJob(queue, 'does-not-exist');
+
+    expect(result).toEqual({ ok: false, message: 'Job does-not-exist not found' });
+  });
+
+  it('normalizes a queue.add() throw into ok:false with its message', async () => {
+    const queue = fakeQueue({
+      getJob: async () => fakeJob({ name: 'j', data: {}, opts: {} } as unknown as Partial<Job>),
+      add: (async () => {
+        throw new Error('add boom');
+      }) as unknown as Queue['add'],
+    });
+
+    const result = await duplicateJob(queue, 'job-1');
+
+    expect(result).toEqual({
+      ok: false,
+      message: 'Could not duplicate job job-1: add boom',
+    });
   });
 });
 

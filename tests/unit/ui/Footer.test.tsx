@@ -47,7 +47,13 @@ describe('Footer', () => {
 describe('keyHintsFor', () => {
   it('search input active: "Enter accept · Esc clear"', () => {
     expect(
-      keyHintsFor({ searchActive: true, confirmDrain: false, detailOpen: false, focus: 'jobs' }),
+      keyHintsFor({
+        searchActive: true,
+        confirmDrain: false,
+        confirmDuplicate: false,
+        detailOpen: false,
+        focus: 'jobs',
+      }),
     ).toBe('Enter accept · Esc clear');
   });
 
@@ -56,21 +62,35 @@ describe('keyHintsFor', () => {
       keyHintsFor({
         searchActive: false,
         confirmDrain: true,
+        confirmDuplicate: false,
         detailOpen: false,
         focus: 'sidebar',
       }),
     ).toBe('y confirm · n/Esc cancel');
   });
 
-  it('detail modal open: "Esc close · q quit"', () => {
+  it('duplicate confirmation pending: "y confirm · n/Esc cancel"', () => {
     expect(
       keyHintsFor({
         searchActive: false,
         confirmDrain: false,
+        confirmDuplicate: true,
+        detailOpen: false,
+        focus: 'jobs',
+      }),
+    ).toBe('y confirm · n/Esc cancel');
+  });
+
+  it('detail modal open: "c duplicate · Esc close · q quit"', () => {
+    expect(
+      keyHintsFor({
+        searchActive: false,
+        confirmDrain: false,
+        confirmDuplicate: false,
         detailOpen: true,
         focus: 'jobs',
       }),
-    ).toBe('Esc close · q quit');
+    ).toBe('c duplicate · Esc close · q quit');
   });
 
   it('sidebar focused', () => {
@@ -78,6 +98,7 @@ describe('keyHintsFor', () => {
       keyHintsFor({
         searchActive: false,
         confirmDrain: false,
+        confirmDuplicate: false,
         detailOpen: false,
         focus: 'sidebar',
       }),
@@ -89,23 +110,48 @@ describe('keyHintsFor', () => {
       keyHintsFor({
         searchActive: false,
         confirmDrain: false,
+        confirmDuplicate: false,
         detailOpen: false,
         focus: 'jobs',
       }),
     ).toBe(
-      '↑/↓ jobs · ←/→ 1-5 tabs · b/n page · Enter detail · r retry · d delete · p promote · D drain · Tab focus · / search · R refresh · q quit',
+      '↑/↓ jobs · ←/→ 1-5 tabs · b/n page · Enter detail · r retry · d delete · p promote · c duplicate · D drain · Tab focus · / search · R refresh · q quit',
     );
   });
 
   it('priority: searchActive wins over detailOpen', () => {
     expect(
-      keyHintsFor({ searchActive: true, confirmDrain: false, detailOpen: true, focus: 'jobs' }),
+      keyHintsFor({
+        searchActive: true,
+        confirmDrain: false,
+        confirmDuplicate: false,
+        detailOpen: true,
+        focus: 'jobs',
+      }),
     ).toBe('Enter accept · Esc clear');
   });
 
   it('priority: confirmDrain wins over detailOpen', () => {
     expect(
-      keyHintsFor({ searchActive: false, confirmDrain: true, detailOpen: true, focus: 'jobs' }),
+      keyHintsFor({
+        searchActive: false,
+        confirmDrain: true,
+        confirmDuplicate: false,
+        detailOpen: true,
+        focus: 'jobs',
+      }),
+    ).toBe('y confirm · n/Esc cancel');
+  });
+
+  it('priority: confirmDuplicate wins over detailOpen', () => {
+    expect(
+      keyHintsFor({
+        searchActive: false,
+        confirmDrain: false,
+        confirmDuplicate: true,
+        detailOpen: true,
+        focus: 'jobs',
+      }),
     ).toBe('y confirm · n/Esc cancel');
   });
 });

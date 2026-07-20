@@ -12,9 +12,10 @@ const TAB_ORDER: JobStatus[] = ['active', 'waiting', 'completed', 'failed', 'del
  *
  *   1. Search input capture (typing into the `/` search bar)
  *   2. Drain confirmation prompt (y/n/Escape)
- *   3. Detail modal open (Escape closes; `q` still quits)
- *   4. Global bindings (`q`, `R`, `Tab`, `/`, `Escape`)
- *   5. Focus-specific bindings (sidebar vs. job list)
+ *   3. Duplicate confirmation prompt (y/n/Escape)
+ *   4. Detail modal open (Escape closes; `c` duplicates; `q` still quits)
+ *   5. Global bindings (`q`, `R`, `Tab`, `/`, `Escape`)
+ *   6. Focus-specific bindings (sidebar vs. job list)
  *
  * Latitude decisions the spec leaves open (documented here rather than left
  * implicit):
@@ -58,9 +59,18 @@ export function useKeymap(
       return;
     }
 
+    if (snapshot.confirmDuplicateJobId !== null) {
+      handleConfirmDuplicateInput(store, input, key);
+      return;
+    }
+
     if (snapshot.detail !== null) {
       if (key.escape) {
         store.closeDetail();
+        return;
+      }
+      if (input === 'c') {
+        store.requestDuplicate();
         return;
       }
       if (input === 'q') {
@@ -147,6 +157,16 @@ function handleConfirmDrainInput(store: DashboardStore, input: string, key: Key)
   }
   if (input === 'n' || input === 'N' || key.escape) {
     store.cancelDrain();
+  }
+}
+
+function handleConfirmDuplicateInput(store: DashboardStore, input: string, key: Key): void {
+  if (input === 'y' || input === 'Y') {
+    void store.confirmDuplicate();
+    return;
+  }
+  if (input === 'n' || input === 'N' || key.escape) {
+    store.cancelDuplicate();
   }
 }
 
@@ -248,6 +268,10 @@ function handleJobsInput(
   }
   if (input === 'p') {
     void store.promoteSelected();
+    return;
+  }
+  if (input === 'c') {
+    store.requestDuplicate();
     return;
   }
   if (input === 'D') {

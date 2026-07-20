@@ -43,6 +43,7 @@ export interface StoreDeps {
     retry(queueName: string, jobId: string): Promise<ActionResult>;
     delete(queueName: string, jobId: string): Promise<ActionResult>;
     promote(queueName: string, jobId: string): Promise<ActionResult>;
+    duplicate(queueName: string, jobId: string): Promise<ActionResult>;
     togglePause(queueName: string): Promise<ActionResult>;
     drain(queueName: string): Promise<ActionResult>;
   };
@@ -96,6 +97,13 @@ export interface DashboardSnapshot {
   detail: JobDetail | null;
   detailLoading: boolean;
   confirmDrain: boolean;
+  /**
+   * Job id awaiting duplicate ("clone") confirmation, or `null` when none
+   * is pending. The id (and its queue) is captured at request time — see
+   * `requestDuplicate` — so the prompt names the job it will actually act
+   * on even if a background poll re-resolves the selection meanwhile.
+   */
+  confirmDuplicateJobId: string | null;
   focus: Focus;
   toasts: Toast[];
   lastUpdatedAt: number | null;
@@ -104,8 +112,9 @@ export interface DashboardSnapshot {
 
 /**
  * Framework-agnostic dashboard state machine. Owns every behavior in the
- * spec (tabs, pagination, search, refresh/polling, focus, modal, drain
- * confirmation, toasts, action dispatch, connection/error handling) with
+ * spec (tabs, pagination, search, refresh/polling, focus, modal, drain and
+ * duplicate confirmations, toasts, action dispatch, connection/error
+ * handling) with
  * zero UI dependencies — `src/core/**` must never import `ink`/`react`.
  *
  * Design notes (latitude left by the spec, decided here):
@@ -150,6 +159,8 @@ export class DashboardStore {
   private detail: JobDetail | null = null;
   private detailLoading = false;
   private confirmDrainFlag = false;
+  /** Pending duplicate confirmation, captured at request time; see `requestDuplicate`. */
+  private pendingDuplicate: { queueName: string; jobId: string } | null = null;
   private focus: Focus = 'sidebar';
   private toasts: Toast[] = [];
   private lastUpdatedAt: number | null = null;
@@ -223,6 +234,7 @@ export class DashboardStore {
       detail: this.detail,
       detailLoading: this.detailLoading,
       confirmDrain: this.confirmDrainFlag,
+      confirmDuplicateJobId: this.pendingDuplicate?.jobId ?? null,
       focus: this.focus,
       toasts: this.toasts,
       lastUpdatedAt: this.lastUpdatedAt,
@@ -781,6 +793,54 @@ export class DashboardStore {
       return;
     }
     this.pushToast(result.info ?? 'Queue drained');
+    await this.refresh();
+  }
+
+  // --- duplicate ("clone") flow -----------------------------------------
+
+  /**
+   * `c`: asks for confirmation before duplicating the selected job. The
+   * queue AND job id are captured NOW, not at confirm time: the background
+   * poll keeps running while the prompt is up, and a refresh can re-resolve
+   * `selectedJobId` (e.g. the job finished and vanished from the page) —
+   * confirming must act on the job the user was looking at when they
+   * pressed `c`, never on whatever the selection drifted to since.
+   */
+  requestDuplicate(): void {
+    if (
+      this.selectedQueueName === null ||
+      this.selectedJobId === null ||
+      this.pendingDuplicate !== null
+    ) {
+      return;
+    }
+    this.pendingDuplicate = { queueName: this.selectedQueueName, jobId: this.selectedJobId };
+    this.emit();
+  }
+
+  cancelDuplicate(): void {
+    if (this.pendingDuplicate === null) {
+      return;
+    }
+    this.pendingDuplicate = null;
+    this.emit();
+  }
+
+  /** Confirms a pending duplicate request: calls `actions.duplicate`, toasts on failure, refreshes on success. */
+  async confirmDuplicate(): Promise<void> {
+    if (this.pendingDuplicate === null) {
+      return;
+    }
+    const { queueName, jobId } = this.pendingDuplicate;
+    this.pendingDuplicate = null;
+    this.emit();
+
+    const result = await this.deps.actions.duplicate(queueName, jobId);
+    if (!result.ok) {
+      this.pushToast(result.message);
+      return;
+    }
+    this.pushToast(result.info ?? `Job ${jobId} duplicated`);
     await this.refresh();
   }
 

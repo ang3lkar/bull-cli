@@ -1,6 +1,13 @@
 import type { Queue } from 'bullmq';
 import { connectionFromUrl } from './config.js';
-import { deleteJob, drainQueue, promoteJob, retryJob, togglePauseQueue } from './core/actions.js';
+import {
+  deleteJob,
+  drainQueue,
+  duplicateJob,
+  promoteJob,
+  retryJob,
+  togglePauseQueue,
+} from './core/actions.js';
 import { discoverQueues } from './core/discovery.js';
 import { fetchJobPage, getJobDetail } from './core/jobs.js';
 import { createQueueRegistry, type QueueRegistry } from './core/queueRegistry.js';
@@ -41,7 +48,8 @@ export interface WiredApp {
  * - `fetchJobPage`/`getJobDetail`: normalized into a REJECTED promise —
  *   `DashboardStore.doRefreshWork`'s per-queue try/catch and `openDetail`'s
  *   own try/catch already handle that uniformly (toast, no crash).
- * - actions (`retry`/`delete`/`promote`/`togglePause`/`drain`): normalized
+ * - actions (`retry`/`delete`/`promote`/`duplicate`/`togglePause`/`drain`):
+ *   normalized
  *   into `{ ok: false, message }` — the ONLY shape `DashboardStore`'s action
  *   dispatch (`runJobAction`/`togglePauseSelectedQueue`) ever expects; it
  *   has no try/catch of its own because `actions.ts` itself guarantees it
@@ -103,6 +111,8 @@ export function createApp(redisUrl: string, prefix: string, pollIntervalMs?: num
         safeAction(registry, queueName, (queue) => deleteJob(queue, jobId)),
       promote: (queueName, jobId) =>
         safeAction(registry, queueName, (queue) => promoteJob(queue, jobId)),
+      duplicate: (queueName, jobId) =>
+        safeAction(registry, queueName, (queue) => duplicateJob(queue, jobId)),
       togglePause: (queueName) =>
         safeAction(registry, queueName, (queue) => togglePauseQueue(queue)),
       drain: (queueName) => safeAction(registry, queueName, (queue) => drainQueue(queue)),

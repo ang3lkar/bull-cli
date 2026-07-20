@@ -12,6 +12,7 @@ export interface FooterProps {
 export interface KeyHintContext {
   searchActive: boolean;
   confirmDrain: boolean;
+  confirmDuplicate: boolean;
   detailOpen: boolean;
   focus: Focus;
 }
@@ -22,18 +23,19 @@ const HINT_SEP = ' · ';
 /**
  * Builds the context-sensitive shortcut legend string for the current UI
  * state, mirroring the dispatch priority order in `useKeymap.ts` (search
- * input capture > drain confirmation > detail modal > focus-specific
- * bindings). Each shortcut is separated by `HINT_SEP`.
+ * input capture > drain confirmation > duplicate confirmation > detail
+ * modal > focus-specific bindings). Each shortcut is separated by
+ * `HINT_SEP`.
  */
 export function keyHintsFor(ctx: KeyHintContext): string {
   if (ctx.searchActive) {
     return ['Enter accept', 'Esc clear'].join(HINT_SEP);
   }
-  if (ctx.confirmDrain) {
+  if (ctx.confirmDrain || ctx.confirmDuplicate) {
     return ['y confirm', 'n/Esc cancel'].join(HINT_SEP);
   }
   if (ctx.detailOpen) {
-    return ['Esc close', 'q quit'].join(HINT_SEP);
+    return ['c duplicate', 'Esc close', 'q quit'].join(HINT_SEP);
   }
   if (ctx.focus === 'sidebar') {
     return [
@@ -54,6 +56,7 @@ export function keyHintsFor(ctx: KeyHintContext): string {
     'r retry',
     'd delete',
     'p promote',
+    'c duplicate',
     'D drain',
     'Tab focus',
     '/ search',
