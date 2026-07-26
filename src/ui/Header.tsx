@@ -87,18 +87,23 @@ function ShortcutLegend({ view }: { view: NavigationView | undefined }) {
  * switched off — leaving just the horizontal line under the title.
  */
 export function Header({ version, view }: HeaderProps) {
-  const viewLabel =
+  const breadcrumbs =
     view?.kind === 'jobs'
-      ? `Queue: ${view.queueName}`
+      ? ['Queues', view.queueName]
       : view?.kind === 'detail'
-        ? `Job: ${view.jobId}`
-        : 'Queues';
+        ? ['Queues', view.queueName, `job #${view.jobId}`]
+        : ['Queues'];
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box borderStyle="single" borderTop={false} borderLeft={false} borderRight={false}>
         <Text bold>bull-cli</Text>
         <Text dimColor> - v{version} </Text>
-        <Text color="cyan">{viewLabel}</Text>
+        {breadcrumbs.map((crumb, index) => (
+          <Text key={crumb}>
+            {index > 0 && <Text dimColor> &gt; </Text>}
+            <Text color={index === breadcrumbs.length - 1 ? 'cyan' : undefined}>{crumb}</Text>
+          </Text>
+        ))}
       </Box>
       <ShortcutLegend view={view} />
     </Box>

@@ -24,4 +24,11 @@ describe('Header', () => {
     expect(lastFrame()).toContain('Duplicate');
     expect(lastFrame()).toContain('Refresh');
   });
+
+  it('renders a breadcrumb for nested navigation', () => {
+    const { lastFrame } = render(
+      <Header version="1.2.3" view={{ kind: 'detail', queueName: 'emailQ', jobId: '43' }} />,
+    );
+    expect(lastFrame()).toContain('Queues > emailQ > job #43');
+  });
 });
