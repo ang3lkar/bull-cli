@@ -2,8 +2,8 @@ import { type Key, useInput } from 'ink';
 import type { DashboardSnapshot, DashboardStore } from '../../core/store.js';
 import type { JobStatus } from '../../core/types.js';
 
-/** Tab order, matching the spec's `1`-`5` keys and `store.ts`'s internal `TAB_ORDER` (not exported). */
-const TAB_ORDER: JobStatus[] = ['active', 'waiting', 'completed', 'failed', 'delayed'];
+/** Status order matching the job-list shortcut row. */
+const TAB_ORDER: JobStatus[] = ['delayed', 'waiting', 'active', 'failed', 'completed'];
 
 /**
  * Single Ink `useInput` dispatcher for the whole app — every keybinding in
@@ -11,11 +11,11 @@ const TAB_ORDER: JobStatus[] = ['active', 'waiting', 'completed', 'failed', 'del
  * order (highest first):
  *
  *   1. Search input capture (typing into the `/` search bar)
- *   2. Drain confirmation prompt (y/n/Escape)
- *   3. Duplicate confirmation prompt (y/n/Escape)
- *   4. Detail modal open (Escape closes; `c` duplicates; `q` still quits)
- *   5. Global bindings (`q`, `R`, `Tab`, `/`, `Escape`)
- *   6. Focus-specific bindings (sidebar vs. job list)
+ *   2. Confirmation prompt (y/n/Escape)
+ *   3. Current navigation-stack view
+ *
+ * `q` is deliberately checked first so it remains global, even while typing
+ * a filter or viewing a confirmation prompt.
  *
  * Latitude decisions the spec leaves open (documented here rather than left
  * implicit):
@@ -49,8 +49,18 @@ export function useKeymap(
   onQuit: () => void,
 ): void {
   useInput((input, key) => {
+    if (input === 'q') {
+      onQuit();
+      return;
+    }
+
     if (snapshot.search.active) {
       handleSearchInput(store, snapshot, input, key);
+      return;
+    }
+
+    if (snapshot.confirmDeleteJobId !== null) {
+      handleConfirmDeleteInput(store, input, key);
       return;
     }
 
@@ -64,46 +74,20 @@ export function useKeymap(
       return;
     }
 
-    if (snapshot.detail !== null) {
-      if (key.escape) {
-        store.closeDetail();
-        return;
-      }
-      if (input === 'c') {
-        store.requestDuplicate();
-        return;
-      }
-      if (input === 'q') {
-        onQuit();
-      }
-      return;
-    }
-
-    if (input === 'q') {
-      onQuit();
-      return;
-    }
-    if (input === 'R') {
+    if (input === 'r') {
       void store.refresh();
       return;
     }
-    if (key.tab) {
-      store.toggleFocus();
-      return;
-    }
-    if (input === '/') {
-      store.openSearch();
-      return;
-    }
-    if (key.escape) {
-      store.closeSearch();
-      return;
-    }
 
-    if (snapshot.focus === 'sidebar') {
-      handleSidebarInput(store, snapshot, input, key);
-    } else {
-      handleJobsInput(store, snapshot, input, key);
+    switch (snapshot.currentView.kind) {
+      case 'queues':
+        handleQueueInput(store, snapshot, input, key);
+        return;
+      case 'jobs':
+        handleJobsInput(store, input, key);
+        return;
+      case 'detail':
+        handleDetailInput(store, input, key);
     }
   });
 }
@@ -170,6 +154,16 @@ function handleConfirmDuplicateInput(store: DashboardStore, input: string, key: 
   }
 }
 
+function handleConfirmDeleteInput(store: DashboardStore, input: string, key: Key): void {
+  if (input === 'y' || input === 'Y') {
+    void store.confirmDelete();
+    return;
+  }
+  if (input === 'n' || input === 'N' || key.escape) {
+    store.cancelDelete();
+  }
+}
+
 function selectAdjacentQueue(
   store: DashboardStore,
   snapshot: DashboardSnapshot,
@@ -187,7 +181,7 @@ function selectAdjacentQueue(
   store.selectQueue(queues[nextIndex].name);
 }
 
-function handleSidebarInput(
+function handleQueueInput(
   store: DashboardStore,
   snapshot: DashboardSnapshot,
   input: string,
@@ -201,6 +195,10 @@ function handleSidebarInput(
     selectAdjacentQueue(store, snapshot, 1);
     return;
   }
+  if (key.return) {
+    store.pushJobsView();
+    return;
+  }
   if (input === 'p') {
     void store.togglePauseSelectedQueue();
     return;
@@ -210,22 +208,15 @@ function handleSidebarInput(
   }
 }
 
-function selectAdjacentTab(
-  store: DashboardStore,
-  snapshot: DashboardSnapshot,
-  direction: 1 | -1,
-): void {
-  const currentIndex = TAB_ORDER.indexOf(snapshot.tab);
-  const nextIndex = Math.min(Math.max(currentIndex + direction, 0), TAB_ORDER.length - 1);
-  store.selectTab(TAB_ORDER[nextIndex]);
-}
-
-function handleJobsInput(
-  store: DashboardStore,
-  snapshot: DashboardSnapshot,
-  input: string,
-  key: Key,
-): void {
+function handleJobsInput(store: DashboardStore, input: string, key: Key): void {
+  if (key.escape || input === 'h') {
+    store.popView();
+    return;
+  }
+  if (input === '/') {
+    store.openSearch();
+    return;
+  }
   if (key.upArrow) {
     store.selectPrevJob();
     return;
@@ -234,16 +225,8 @@ function handleJobsInput(
     store.selectNextJob();
     return;
   }
-  if (key.leftArrow) {
-    selectAdjacentTab(store, snapshot, -1);
-    return;
-  }
-  if (key.rightArrow) {
-    selectAdjacentTab(store, snapshot, 1);
-    return;
-  }
   if (input >= '1' && input <= '5') {
-    store.selectTab(Number(input));
+    store.selectTab(TAB_ORDER[Number(input) - 1]);
     return;
   }
   if (input === 'b') {
@@ -258,12 +241,12 @@ function handleJobsInput(
     void store.openDetail();
     return;
   }
-  if (input === 'r') {
+  if (input === 'R') {
     void store.retrySelected();
     return;
   }
-  if (input === 'd') {
-    void store.deleteSelected();
+  if (input === 'D') {
+    store.requestDelete();
     return;
   }
   if (input === 'p') {
@@ -274,7 +257,22 @@ function handleJobsInput(
     store.requestDuplicate();
     return;
   }
+}
+
+function handleDetailInput(store: DashboardStore, input: string, key: Key): void {
+  if (key.escape || input === 'h') {
+    store.popView();
+    return;
+  }
+  if (input === 'R') {
+    void store.retrySelected();
+    return;
+  }
   if (input === 'D') {
-    store.requestDrain();
+    store.requestDelete();
+    return;
+  }
+  if (input === 'c') {
+    void store.copyDetailData();
   }
 }

@@ -27,28 +27,20 @@ describe('JobTable', () => {
     expect(frame).toContain('ID');
     expect(frame).toContain('Name');
     expect(frame).toContain('Attempts');
-    expect(frame).toContain('Timestamp');
-    expect(frame).toContain('Progress');
+    expect(frame).toContain('CreatedAt');
+    expect(frame).toContain('State');
   });
 
-  it('renders row values: id, name, attempts, clock timestamp, numeric progress, and — for null progress', () => {
+  it('renders row values: id, name, state, attempts, and created time', () => {
     const { lastFrame } = render(
-      <JobTable
-        jobs={jobs}
-        selectedJobId={null}
-        page={0}
-        pageCount={1}
-        focused={false}
-        now={NOW}
-      />,
+      <JobTable jobs={jobs} selectedJobId={null} page={0} pageCount={1} status="active" />,
     );
     const frame = lastFrame() ?? '';
     expect(frame).toContain('job-1');
     expect(frame).toContain('sendEmail');
     expect(frame).toContain('sendSms');
     expect(frame).toContain(formatClock(NOW));
-    expect(frame).toContain('42%');
-    expect(frame).toContain('—');
+    expect(frame).toContain('active');
   });
 
   it('shows the 1-based Page N of M indicator', () => {
@@ -89,31 +81,14 @@ describe('JobTable', () => {
     expect(selectedLine).toContain('❯');
   });
 
-  it('renders a different highlight when selected but unfocused', () => {
-    const focused = render(
-      <JobTable
-        jobs={jobs}
-        selectedJobId="job-2"
-        page={0}
-        pageCount={1}
-        focused={true}
-        now={NOW}
-      />,
+  it('always marks the selected row because this is a single-focus view', () => {
+    const result = render(
+      <JobTable jobs={jobs} selectedJobId="job-2" page={0} pageCount={1} focused={false} />,
     );
-    const unfocused = render(
-      <JobTable
-        jobs={jobs}
-        selectedJobId="job-2"
-        page={0}
-        pageCount={1}
-        focused={false}
-        now={NOW}
-      />,
-    );
-    expect(focused.lastFrame()).not.toBe(unfocused.lastFrame());
-    const unfocusedLines = (unfocused.lastFrame() ?? '').split('\n');
-    const selectedLine = unfocusedLines.find((l) => l.includes('job-2'));
-    expect(selectedLine).not.toContain('❯');
+    const selectedLine = (result.lastFrame() ?? '')
+      .split('\n')
+      .find((line) => line.includes('job-2'));
+    expect(selectedLine).toContain('❯');
   });
 
   it('truncates a long id/name with an ellipsis', () => {
@@ -137,5 +112,29 @@ describe('JobTable', () => {
       />,
     );
     expect(lastFrame()).toContain('…');
+  });
+
+  it('fits every table row within an 80-column terminal', () => {
+    const { lastFrame } = render(
+      <JobTable
+        jobs={[
+          {
+            id: 'a-very-long-job-identifier-that-overflows',
+            name: 'aVeryLongJobNameThatOverflowsTheColumn',
+            attemptsMade: 3,
+            timestamp: NOW,
+            progress: null,
+          },
+        ]}
+        status="failed"
+        selectedJobId="a-very-long-job-identifier-that-overflows"
+        page={0}
+        pageCount={1}
+        width={80}
+      />,
+    );
+    for (const line of (lastFrame() ?? '').split('\n').filter((line) => !line.includes('Page'))) {
+      expect(line.length).toBeLessThanOrEqual(80);
+    }
   });
 });

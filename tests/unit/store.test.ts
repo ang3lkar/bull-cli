@@ -1620,6 +1620,46 @@ describe('DashboardStore: job/queue actions', () => {
   });
 });
 
+describe('DashboardStore: navigation stack', () => {
+  it('opens every queue at the Delayed status, even when it is empty', async () => {
+    const state: FakeState = {
+      queues: [makeQueue('email')],
+      jobs: { [jobKey('email', 'waiting')]: [makeJob('waiting-1', 'send')] },
+      details: {},
+    };
+    const store = track(new DashboardStore(createFakeDeps(state), { redisUrl: 'redis://x' }));
+    await store.refresh();
+    expect(store.getSnapshot().tab).toBe('active');
+
+    store.pushJobsView();
+    await flush();
+
+    expect(store.getSnapshot().currentView).toEqual({ kind: 'jobs', queueName: 'email' });
+    expect(store.getSnapshot().tab).toBe('delayed');
+    expect(store.getSnapshot().visibleJobs).toEqual([]);
+  });
+
+  it('pushes the selected queue and pops back to the root without losing selection', async () => {
+    const state: FakeState = {
+      queues: [makeQueue('email')],
+      jobs: { [jobKey('email', 'active')]: [makeJob('job-1', 'send')] },
+      details: {},
+    };
+    const store = track(new DashboardStore(createFakeDeps(state), { redisUrl: 'redis://x' }));
+    await store.refresh();
+
+    expect(store.getSnapshot().navigationStack).toEqual([{ kind: 'queues' }]);
+    store.pushJobsView();
+    expect(store.getSnapshot().currentView).toEqual({ kind: 'jobs', queueName: 'email' });
+
+    store.popView();
+    expect(store.getSnapshot().navigationStack).toEqual([{ kind: 'queues' }]);
+    expect(store.getSnapshot().selectedQueueName).toBe('email');
+    store.popView();
+    expect(store.getSnapshot().navigationStack).toEqual([{ kind: 'queues' }]);
+  });
+});
+
 describe('DashboardStore: toasts', () => {
   it('dismissToast removes a toast early and is a no-op for an unknown id', async () => {
     const deps = createFakeDeps({ queues: [], jobs: {}, details: {} });

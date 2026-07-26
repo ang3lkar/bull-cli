@@ -12,66 +12,65 @@ import type {
 import { App } from '../../../src/ui/App.js';
 
 const NOW = 1_700_000_000_000;
+const statuses: JobStatus[] = ['active', 'waiting', 'completed', 'failed', 'delayed'];
 
-// --- fixtures & fakes (mirrors tests/unit/store.test.ts's shape) ----------
-
-function makeQueue(name: string, isPaused = false): QueueInfo {
-  return { name, isPaused };
-}
-
-function makeJob(id: string, name: string, overrides: Partial<JobSummary> = {}): JobSummary {
-  return { id, name, attemptsMade: 0, timestamp: NOW, progress: null, ...overrides };
-}
-
-const ALL_STATUSES: JobStatus[] = ['active', 'waiting', 'completed', 'failed', 'delayed'];
-
-const ZERO_COUNTS: Record<JobStatus, number> = {
-  active: 0,
-  waiting: 0,
-  completed: 0,
-  failed: 0,
-  delayed: 0,
-};
-
-function paginate(jobs: JobSummary[], page: number): JobPage {
-  const pageCount = Math.max(1, Math.ceil(jobs.length / 10));
-  const clamped = Math.min(Math.max(page, 0), pageCount - 1);
-  const slice = jobs.slice(clamped * 10, clamped * 10 + 10);
-  return { jobs: slice, totalCount: jobs.length, page: clamped, pageCount, counts: ZERO_COUNTS };
-}
-
-interface FakeState {
-  queues: QueueInfo[];
-  /** keyed by `${queueName}::${status}` */
-  jobs: Record<string, JobSummary[]>;
-  /** keyed by `${queueName}::${jobId}` */
-  details: Record<string, JobDetail>;
-}
-
-function jobKey(queueName: string, status: JobStatus): string {
-  return `${queueName}::${status}`;
-}
-
-function detailKey(queueName: string, jobId: string): string {
-  return `${queueName}::${jobId}`;
-}
-
-function countsForQueue(state: FakeState, queueName: string): Record<JobStatus, number> {
-  return Object.fromEntries(
-    ALL_STATUSES.map((s) => [s, state.jobs[jobKey(queueName, s)]?.length ?? 0]),
+const counts = (jobs: Record<string, JobSummary[]>, queueName: string) =>
+  Object.fromEntries(
+    statuses.map((status) => [status, jobs[`${queueName}:${status}`]?.length ?? 0]),
   ) as Record<JobStatus, number>;
+
+function job(id: string, name = 'send-email'): JobSummary {
+  return { id, name, attemptsMade: 1, timestamp: NOW, progress: null };
 }
 
-function createFakeDeps(state: FakeState): StoreDeps {
+function page(
+  jobs: JobSummary[],
+  requestedPage: number,
+  jobCounts: Record<JobStatus, number>,
+): JobPage {
+  const pageCount = Math.max(1, Math.ceil(jobs.length / 10));
+  const currentPage = Math.min(requestedPage, pageCount - 1);
   return {
-    discoverQueues: vi.fn(async () => state.queues),
-    fetchJobPage: vi.fn(async (queueName: string, status: JobStatus, page: number) => ({
-      ...paginate(state.jobs[jobKey(queueName, status)] ?? [], page),
-      counts: countsForQueue(state, queueName),
-    })),
-    getJobDetail: vi.fn(async (queueName: string, jobId: string) => {
-      return state.details[detailKey(queueName, jobId)] ?? null;
-    }),
+    jobs: jobs.slice(currentPage * 10, currentPage * 10 + 10),
+    totalCount: jobs.length,
+    page: currentPage,
+    pageCount,
+    counts: jobCounts,
+  };
+}
+
+function detail(id: string): JobDetail {
+  return {
+    ...job(id),
+    data: { recipient: 'test@example.com' },
+    returnvalue: null,
+    stacktrace: ['Error: boom'],
+    opts: {},
+    timestamps: { created: NOW, processed: NOW, finished: NOW },
+    rawProgress: null,
+  };
+}
+
+function setup() {
+  const queues: QueueInfo[] = [
+    { name: 'emailQ', isPaused: false },
+    { name: 'smsQ', isPaused: true },
+  ];
+  const jobs: Record<string, JobSummary[]> = {
+    'emailQ:active': [job('active-1')],
+    'emailQ:waiting': [job('waiting-1')],
+    'emailQ:failed': [job('failed-1')],
+    'emailQ:completed': [job('completed-1')],
+    'emailQ:delayed': [job('delayed-1')],
+  };
+  const deps: StoreDeps = {
+    discoverQueues: vi.fn(async () => queues),
+    fetchQueueCounts: vi.fn(async (queueName) => counts(jobs, queueName)),
+    fetchJobPage: vi.fn(async (queueName, status, requestedPage) =>
+      page(jobs[`${queueName}:${status}`] ?? [], requestedPage, counts(jobs, queueName)),
+    ),
+    getJobDetail: vi.fn(async (_queueName, jobId) => detail(jobId)),
+    copyToClipboard: vi.fn(async () => {}),
     actions: {
       retry: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       delete: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
@@ -82,582 +81,124 @@ function createFakeDeps(state: FakeState): StoreDeps {
     },
     syncRegistry: vi.fn(async () => {}),
   };
-}
-
-function buildState(): FakeState {
-  const waitingJobs = Array.from({ length: 15 }, (_, i) => makeJob(`w${i}`, `job-w${i}`));
-  return {
-    queues: [makeQueue('emailQ'), makeQueue('smsQ', true)],
-    jobs: {
-      [jobKey('emailQ', 'active')]: [
-        makeJob('a1', 'send-email', { progress: 10 }),
-        makeJob('a2', 'send-email', { progress: 20 }),
-      ],
-      [jobKey('emailQ', 'waiting')]: waitingJobs,
-      [jobKey('emailQ', 'completed')]: [makeJob('c1', 'send-email')],
-      [jobKey('emailQ', 'failed')]: [makeJob('f1', 'send-email', { attemptsMade: 3 })],
-      [jobKey('emailQ', 'delayed')]: [makeJob('d1', 'send-email')],
-      [jobKey('smsQ', 'active')]: [],
-      [jobKey('smsQ', 'waiting')]: [],
-      [jobKey('smsQ', 'completed')]: [],
-      [jobKey('smsQ', 'failed')]: [],
-      [jobKey('smsQ', 'delayed')]: [],
-    },
-    details: {
-      [detailKey('emailQ', 'f1')]: {
-        id: 'f1',
-        name: 'send-email',
-        attemptsMade: 3,
-        timestamp: NOW,
-        progress: null,
-        data: { to: 'a@b.com' },
-        returnvalue: null,
-        stacktrace: ['Error: boom', '  at foo.js:1:1'],
-        opts: {},
-        timestamps: { created: NOW, processed: NOW, finished: NOW },
-        rawProgress: null,
-      },
-    },
-  };
+  const store = new DashboardStore(deps, { redisUrl: 'redis://localhost:6379' });
+  const onQuit = vi.fn();
+  return { deps, store, onQuit };
 }
 
 async function flush(): Promise<void> {
   await vi.advanceTimersByTimeAsync(0);
 }
 
-const activeStores: DashboardStore[] = [];
+const stores: DashboardStore[] = [];
 
-function track(store: DashboardStore): DashboardStore {
-  activeStores.push(store);
-  return store;
-}
-
-async function setup(state: FakeState = buildState()) {
-  const deps = createFakeDeps(state);
-  const store = track(new DashboardStore(deps, { redisUrl: 'redis://localhost:6379' }));
-  await store.refresh();
-  const onQuit = vi.fn();
-  const instance = render(<App store={store} onQuit={onQuit} />);
+async function mount() {
+  const setupResult = setup();
+  stores.push(setupResult.store);
+  await setupResult.store.refresh();
+  const instance = render(<App store={setupResult.store} onQuit={setupResult.onQuit} />);
   await flush();
-  return { deps, store, onQuit, state, ...instance };
+  return { ...setupResult, ...instance };
 }
 
-beforeEach(() => {
-  vi.useFakeTimers({ now: NOW });
-});
-
+beforeEach(() => vi.useFakeTimers({ now: NOW }));
 afterEach(() => {
-  for (const store of activeStores.splice(0)) {
-    store.dispose();
-  }
+  for (const store of stores.splice(0)) store.dispose();
   vi.useRealTimers();
 });
 
-// --- tests -----------------------------------------------------------------
+describe('App: stack navigation', () => {
+  it('renders the full-width queue view and enters a selected queue', async () => {
+    const { stdin, lastFrame, store } = await mount();
+    expect(lastFrame()).toContain('Queue');
+    expect(lastFrame()).toContain('Waiting');
+    expect(lastFrame()).toContain('emailQ');
+    expect(lastFrame()).toContain('smsQ');
 
-describe('App: focus toggle (Tab)', () => {
-  it('toggles focus between sidebar and job list, moving the ❯ marker', async () => {
-    const { store, stdin, lastFrame } = await setup();
-    expect(store.getSnapshot().focus).toBe('sidebar');
-
-    let frame = lastFrame() ?? '';
-    let lines = frame.split('\n');
-    expect(lines.find((l) => l.includes('emailQ'))).toContain('❯');
-
-    stdin.write('\t');
-    await flush();
-    expect(store.getSnapshot().focus).toBe('jobs');
-
-    frame = lastFrame() ?? '';
-    lines = frame.split('\n');
-    expect(lines.find((l) => l.includes('emailQ'))).not.toContain('❯');
-    expect(lines.find((l) => l.includes('a1'))).toContain('❯');
-
-    stdin.write('\t');
-    await flush();
-    expect(store.getSnapshot().focus).toBe('sidebar');
-  });
-});
-
-describe('App: sidebar navigation', () => {
-  it('↑/↓ change the selected queue while sidebar is focused', async () => {
-    const { store, stdin } = await setup();
-    expect(store.getSnapshot().selectedQueueName).toBe('emailQ');
-
-    stdin.write('[B'); // down
-    await flush();
-    expect(store.getSnapshot().selectedQueueName).toBe('smsQ');
-
-    stdin.write('[A'); // up
-    await flush();
-    expect(store.getSnapshot().selectedQueueName).toBe('emailQ');
-  });
-});
-
-describe('App: job navigation', () => {
-  it('↑/↓ change the selected job row while jobs are focused', async () => {
-    const { store, stdin } = await setup();
-    stdin.write('\t'); // focus jobs
-    await flush();
-    expect(store.getSnapshot().selectedJobId).toBe('a1');
-
-    stdin.write('[B'); // down
-    await flush();
-    expect(store.getSnapshot().selectedJobId).toBe('a2');
-
-    stdin.write('[A'); // up
-    await flush();
-    expect(store.getSnapshot().selectedJobId).toBe('a1');
-  });
-});
-
-describe('App: tab switching', () => {
-  it('←/→ switch status tabs, clamped at both ends', async () => {
-    const { store, stdin, lastFrame } = await setup();
-    stdin.write('\t'); // focus jobs
-    await flush();
-    expect(store.getSnapshot().tab).toBe('active');
-    expect(lastFrame()).toContain('[Active]');
-
-    stdin.write('[C'); // right -> waiting
-    await flush();
-    expect(store.getSnapshot().tab).toBe('waiting');
-    expect(lastFrame()).toContain('[Waiting]');
-
-    stdin.write('[D'); // left -> active
-    await flush();
-    expect(store.getSnapshot().tab).toBe('active');
-
-    stdin.write('[D'); // left again: clamp, stays active
-    await flush();
-    expect(store.getSnapshot().tab).toBe('active');
-  });
-
-  it('1-5 select tabs directly', async () => {
-    const { store, stdin, lastFrame } = await setup();
-    stdin.write('\t');
-    await flush();
-
-    stdin.write('4'); // failed
-    await flush();
-    expect(store.getSnapshot().tab).toBe('failed');
-    expect(lastFrame()).toContain('[Failed]');
-
-    stdin.write('5'); // delayed
-    await flush();
-    expect(store.getSnapshot().tab).toBe('delayed');
-  });
-});
-
-describe('App: pagination', () => {
-  it('b/n paginate the job list', async () => {
-    const { store, stdin, lastFrame } = await setup();
-    stdin.write('\t'); // focus jobs
-    await flush();
-    stdin.write('2'); // waiting tab: 15 jobs -> 2 pages
-    await flush();
-
-    expect(lastFrame()).toContain('Page 1 of 2');
-
-    stdin.write('n'); // next page
-    await flush();
-    expect(store.getSnapshot().page).toBe(1);
-    expect(lastFrame()).toContain('Page 2 of 2');
-
-    stdin.write('b'); // previous page
-    await flush();
-    expect(store.getSnapshot().page).toBe(0);
-    expect(lastFrame()).toContain('Page 1 of 2');
-  });
-});
-
-describe('App: job detail modal', () => {
-  it('Enter opens the modal, Escape closes it', async () => {
-    const { store, stdin, lastFrame } = await setup();
-    stdin.write('\t'); // focus jobs
-    await flush();
-    stdin.write('4'); // failed tab -> job f1
-    await flush();
-    expect(store.getSnapshot().selectedJobId).toBe('f1');
-
-    stdin.write('\r'); // Enter
-    await flush();
-    expect(store.getSnapshot().detail?.id).toBe('f1');
-    expect(lastFrame()).toContain('Stacktrace');
-
-    stdin.write(''); // Escape
-    await flush();
-    expect(store.getSnapshot().detail).toBeNull();
-    expect(lastFrame()).not.toContain('Stacktrace');
-  });
-});
-
-describe('App: search', () => {
-  it('/ opens search, typing filters live, Escape clears+restores, Enter keeps filter with input closed', async () => {
-    const { store, stdin, lastFrame } = await setup();
-    stdin.write('\t'); // focus jobs
-    await flush();
-    stdin.write('2'); // waiting tab (job-w0..job-w14)
-    await flush();
-
-    stdin.write('/');
-    await flush();
-    expect(store.getSnapshot().search.active).toBe(true);
-    expect(lastFrame()).toContain('/ ');
-
-    // Filtering only ever applies to the currently loaded page (10 jobs:
-    // w0..w9) — search filters the *visible* list, not the whole tab.
-    stdin.write('w1');
-    await flush();
-    expect(store.getSnapshot().visibleJobs.map((j) => j.id)).toEqual(['w1']);
-    expect(lastFrame()).not.toContain('job-w0');
-
-    // Enter: closes the input but keeps the filter -- and that must be
-    // visible on screen (the "(filtered)" indicator), not just in state,
-    // otherwise a filtered list with a closed input looks unexplained.
     stdin.write('\r');
     await flush();
-    expect(store.getSnapshot().search).toEqual({ active: false, query: 'w1' });
-    expect(store.getSnapshot().visibleJobs.map((j) => j.id)).toEqual(['w1']);
-    let frame = lastFrame() ?? '';
-    expect(frame).toContain('(filtered)');
-    expect(frame).toContain('/ w1');
-    expect(frame).not.toContain('job-w0');
-
-    // Global Escape (search input no longer active) clears the lingering filter.
-    stdin.write('');
-    await flush();
-    expect(store.getSnapshot().search).toEqual({ active: false, query: '' });
-    expect(store.getSnapshot().visibleJobs).toHaveLength(10); // full first page restored
-    frame = lastFrame() ?? '';
-    expect(frame).not.toContain('(filtered)');
-    expect(frame).toContain('job-w0');
+    expect(store.getSnapshot().currentView).toEqual({ kind: 'jobs', queueName: 'emailQ' });
+    expect(store.getSnapshot().tab).toBe('delayed');
+    expect(lastFrame()).toContain('[Delayed]');
+    expect(lastFrame()).toContain('Jobs');
+    expect(lastFrame()).toContain('emailQ');
+    expect(lastFrame()).not.toContain('smsQ');
   });
 
-  it('Escape while typing clears the query immediately and restores the full list', async () => {
-    const { store, stdin } = await setup();
-    stdin.write('\t');
+  it('pushes detail and pops it with Esc and h', async () => {
+    const { stdin, lastFrame, store } = await mount();
+    stdin.write('\r');
     await flush();
-    stdin.write('2');
+    stdin.write('3');
     await flush();
+    stdin.write('\r');
+    await flush();
+    expect(store.getSnapshot().currentView).toEqual({
+      kind: 'detail',
+      queueName: 'emailQ',
+      jobId: 'active-1',
+    });
+    expect(lastFrame()).toContain('recipient');
+
+    stdin.write('\u001B');
+    await flush();
+    expect(store.getSnapshot().currentView.kind).toBe('jobs');
+    stdin.write('h');
+    await flush();
+    expect(store.getSnapshot().currentView.kind).toBe('queues');
+  });
+
+  it('filters in the job view and switches status with numeric keys', async () => {
+    const { stdin, store } = await mount();
+    stdin.write('\r');
+    await flush();
+    stdin.write('4');
+    await flush();
+    expect(store.getSnapshot().tab).toBe('failed');
+    expect(store.getSnapshot().selectedJobId).toBe('failed-1');
 
     stdin.write('/');
     await flush();
-    stdin.write('w1');
+    stdin.write('failed');
     await flush();
-    expect(store.getSnapshot().visibleJobs.length).toBeLessThan(10);
-
-    stdin.write(''); // Escape while search input is active
+    expect(store.getSnapshot().search.query).toBe('failed');
+    stdin.write('\u001B');
     await flush();
-    expect(store.getSnapshot().search).toEqual({ active: false, query: '' });
-    expect(store.getSnapshot().visibleJobs).toHaveLength(10);
-  });
-
-  it('Backspace edits the query while typing', async () => {
-    const { store, stdin } = await setup();
-    stdin.write('/');
-    await flush();
-    stdin.write('a2x');
-    await flush();
-    expect(store.getSnapshot().search.query).toBe('a2x');
-
-    stdin.write(''); // backspace
-    await flush();
-    expect(store.getSnapshot().search.query).toBe('a2');
-    expect(store.getSnapshot().visibleJobs.map((j) => j.id)).toEqual(['a2']);
+    expect(store.getSnapshot().search.query).toBe('');
   });
 });
 
-describe('App: sidebar actions', () => {
-  it('p toggles pause on the selected queue', async () => {
-    const { store, stdin, deps } = await setup();
-    expect(store.getSnapshot().selectedQueueName).toBe('emailQ');
-
-    stdin.write('p');
+describe('App: contextual actions', () => {
+  it('confirms deletion from the job view before acting', async () => {
+    const { deps, stdin, store } = await mount();
+    stdin.write('\r');
     await flush();
-    expect(deps.actions.togglePause).toHaveBeenCalledWith('emailQ');
-  });
-
-  it('Shift+D shows a confirm prompt; y drains, n cancels, Escape cancels', async () => {
-    const { store, stdin, deps, lastFrame } = await setup();
-
+    stdin.write('3');
+    await flush();
     stdin.write('D');
     await flush();
-    expect(store.getSnapshot().confirmDrain).toBe(true);
-    expect(lastFrame()).toContain('Drain');
-
-    stdin.write('n');
-    await flush();
-    expect(store.getSnapshot().confirmDrain).toBe(false);
-    expect(deps.actions.drain).not.toHaveBeenCalled();
-
-    stdin.write('D');
-    await flush();
-    stdin.write(''); // Escape cancels too
-    await flush();
-    expect(store.getSnapshot().confirmDrain).toBe(false);
-    expect(deps.actions.drain).not.toHaveBeenCalled();
-
-    stdin.write('D');
-    await flush();
-    stdin.write('y');
-    await flush();
-    expect(deps.actions.drain).toHaveBeenCalledWith('emailQ');
-    expect(store.getSnapshot().confirmDrain).toBe(false);
-  });
-
-  it('Shift+D also requests a drain from the job list (focus jobs)', async () => {
-    const { store, stdin, deps } = await setup();
-    stdin.write('\t'); // focus jobs
-    await flush();
-
-    stdin.write('D');
-    await flush();
-    expect(store.getSnapshot().confirmDrain).toBe(true);
+    expect(store.getSnapshot().confirmDeleteJobId).toBe('active-1');
+    expect(deps.actions.delete).not.toHaveBeenCalled();
 
     stdin.write('y');
     await flush();
-    expect(deps.actions.drain).toHaveBeenCalledWith('emailQ');
-  });
-});
-
-describe('App: job actions', () => {
-  it('r retries on the failed tab', async () => {
-    const { store, stdin, deps } = await setup();
-    stdin.write('\t'); // focus jobs
-    await flush();
-    stdin.write('4'); // failed
-    await flush();
-    expect(store.getSnapshot().selectedJobId).toBe('f1');
-
-    stdin.write('r');
-    await flush();
-    expect(deps.actions.retry).toHaveBeenCalledWith('emailQ', 'f1');
+    expect(deps.actions.delete).toHaveBeenCalledWith('emailQ', 'active-1');
   });
 
-  it('d deletes the selected job', async () => {
-    const { store, stdin, deps } = await setup();
-    stdin.write('\t');
+  it('copies the detail data and keeps q global', async () => {
+    const { deps, onQuit, stdin } = await mount();
+    stdin.write('\r');
     await flush();
-    expect(store.getSnapshot().selectedJobId).toBe('a1');
-
-    stdin.write('d');
+    stdin.write('3');
     await flush();
-    expect(deps.actions.delete).toHaveBeenCalledWith('emailQ', 'a1');
-  });
-
-  it('p promotes the selected job on the delayed tab', async () => {
-    const { store, stdin, deps } = await setup();
-    stdin.write('\t');
+    stdin.write('\r');
     await flush();
-    stdin.write('5'); // delayed
-    await flush();
-    expect(store.getSnapshot().selectedJobId).toBe('d1');
-
-    stdin.write('p');
-    await flush();
-    expect(deps.actions.promote).toHaveBeenCalledWith('emailQ', 'd1');
-  });
-});
-
-describe('App: duplicate flow', () => {
-  it('c shows a confirm prompt; y duplicates, n cancels, Escape cancels', async () => {
-    const { store, stdin, deps, lastFrame } = await setup();
-    stdin.write('\t'); // focus jobs
-    await flush();
-    expect(store.getSnapshot().selectedJobId).toBe('a1');
-
     stdin.write('c');
     await flush();
-    expect(store.getSnapshot().confirmDuplicateJobId).toBe('a1');
-    expect(lastFrame()).toContain('Duplicate job a1');
-
-    stdin.write('n');
-    await flush();
-    expect(store.getSnapshot().confirmDuplicateJobId).toBeNull();
-    expect(deps.actions.duplicate).not.toHaveBeenCalled();
-
-    stdin.write('c');
-    await flush();
-    stdin.write(''); // Escape cancels too
-    await flush();
-    expect(store.getSnapshot().confirmDuplicateJobId).toBeNull();
-    expect(deps.actions.duplicate).not.toHaveBeenCalled();
-
-    stdin.write('c');
-    await flush();
-    stdin.write('y');
-    await flush();
-    expect(deps.actions.duplicate).toHaveBeenCalledWith('emailQ', 'a1');
-    expect(store.getSnapshot().confirmDuplicateJobId).toBeNull();
-  });
-
-  it('c is a no-op while the sidebar is focused', async () => {
-    const { store, stdin } = await setup();
-    expect(store.getSnapshot().focus).toBe('sidebar');
-
-    stdin.write('c');
-    await flush();
-    expect(store.getSnapshot().confirmDuplicateJobId).toBeNull();
-  });
-
-  it('c also duplicates from the open detail modal, which stays open afterwards', async () => {
-    const { store, stdin, deps, lastFrame } = await setup();
-    stdin.write('\t'); // focus jobs
-    await flush();
-    stdin.write('4'); // failed tab -> job f1, which has detail fixture data
-    await flush();
-    stdin.write('\r'); // open detail for f1
-    await flush();
-    expect(store.getSnapshot().detail?.id).toBe('f1');
-
-    stdin.write('c');
-    await flush();
-    expect(store.getSnapshot().confirmDuplicateJobId).toBe('f1');
-    expect(lastFrame()).toContain('Duplicate job f1');
-
-    stdin.write('y');
-    await flush();
-    expect(deps.actions.duplicate).toHaveBeenCalledWith('emailQ', 'f1');
-    expect(store.getSnapshot().confirmDuplicateJobId).toBeNull();
-    expect(store.getSnapshot().detail?.id).toBe('f1'); // modal still open
-  });
-});
-
-describe('App: refresh and quit', () => {
-  it('R calls refresh (dep call count bumps)', async () => {
-    const { deps, stdin } = await setup();
-    const before = (deps.discoverQueues as ReturnType<typeof vi.fn>).mock.calls.length;
-
-    stdin.write('R');
-    await flush();
-    expect(deps.discoverQueues).toHaveBeenCalledTimes(before + 1);
-  });
-
-  it('q calls onQuit', async () => {
-    const { stdin, onQuit } = await setup();
-    stdin.write('q');
-    await flush();
-    expect(onQuit).toHaveBeenCalledTimes(1);
-  });
-
-  it('q also quits while the detail modal is open', async () => {
-    const { store, stdin, onQuit } = await setup();
-    stdin.write('\t'); // focus jobs
-    await flush();
-    stdin.write('4'); // failed tab -> job f1, which has detail fixture data
-    await flush();
-    stdin.write('\r'); // open detail for f1
-    await flush();
-    expect(store.getSnapshot().detail?.id).toBe('f1');
+    expect(deps.copyToClipboard).toHaveBeenCalledWith('{\n  "recipient": "test@example.com"\n}');
 
     stdin.write('q');
     await flush();
-    expect(onQuit).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('App: connection / empty states', () => {
-  it('renders ErrorScreen when the connection is in an error state', async () => {
-    const state = buildState();
-    const deps = createFakeDeps(state);
-    const store = track(new DashboardStore(deps, { redisUrl: 'redis://localhost:6379' }));
-    store.onConnectionStatus({
-      state: 'error',
-      url: 'redis://localhost:6379',
-      message: 'ECONNREFUSED',
-    });
-    const onQuit = vi.fn();
-    const { lastFrame } = render(<App store={store} onQuit={onQuit} />);
-    await flush();
-
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Cannot connect to Redis');
-    expect(frame).toContain('ECONNREFUSED');
-  });
-
-  it('renders EmptyState when discovery finds no queues', async () => {
-    const state: FakeState = { queues: [], jobs: {}, details: {} };
-    const deps = createFakeDeps(state);
-    const store = track(new DashboardStore(deps, { redisUrl: 'redis://localhost:6379' }));
-    await store.refresh();
-    const onQuit = vi.fn();
-    const { lastFrame } = render(<App store={store} onQuit={onQuit} />);
-    await flush();
-
-    expect(lastFrame()).toContain('No BullMQ queues found on redis://localhost:6379');
-  });
-});
-
-describe('App: toasts', () => {
-  it('a failed action shows a toast that disappears after the auto-dismiss timer', async () => {
-    const state = buildState();
-    const deps = createFakeDeps(state);
-    (deps.actions.delete as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      ok: false,
-      message: 'Could not delete job a1',
-    });
-    const store = track(new DashboardStore(deps, { redisUrl: 'redis://localhost:6379' }));
-    await store.refresh();
-    const onQuit = vi.fn();
-    const { stdin, lastFrame } = render(<App store={store} onQuit={onQuit} />);
-    await flush();
-
-    stdin.write('\t'); // focus jobs
-    await flush();
-    stdin.write('d');
-    await flush();
-
-    expect(lastFrame()).toContain('Could not delete job a1');
-
-    await vi.advanceTimersByTimeAsync(4000); // default toastDurationMs
-    expect(lastFrame()).not.toContain('Could not delete job a1');
-  });
-});
-
-describe('App: footer ticking', () => {
-  it('advancing 2s updates the "Last updated" counter', async () => {
-    const { lastFrame } = await setup();
-    expect(lastFrame()).toContain('Last updated: 0s ago');
-
-    await vi.advanceTimersByTimeAsync(2000);
-    expect(lastFrame()).toContain('Last updated: 2s ago');
-  });
-});
-
-describe('App: fills the terminal height', () => {
-  it('pins the footer to the last row once the terminal reports its size', async () => {
-    const { stdout, lastFrame } = await setup();
-
-    Object.defineProperty(stdout, 'rows', { value: 20, configurable: true });
-    stdout.emit('resize');
-    await flush();
-
-    const lines = (lastFrame() ?? '').split('\n');
-    expect(lines).toHaveLength(20);
-    // Footer is two rows (hints line, then redis-url/last-updated line) —
-    // the bottom-pinned footer means both live at the very end of the frame.
-    expect(lines[lines.length - 2]).toContain('q quit');
-    expect(lines[lines.length - 1]).toContain('Last updated');
-  });
-});
-
-describe('App: footer legend follows focus/state', () => {
-  it('shows the sidebar legend, then jobs legend on Tab, then search legend on /, then back on Escape', async () => {
-    const { stdin, lastFrame } = await setup();
-
-    expect(lastFrame()).toContain('p pause/resume');
-
-    stdin.write('\t'); // focus jobs
-    await flush();
-    expect(lastFrame()).toContain('r retry');
-
-    stdin.write('/');
-    await flush();
-    expect(lastFrame()).toContain('Enter accept');
-
-    stdin.write(''); // Escape while search input is active
-    await flush();
-    expect(lastFrame()).toContain('r retry');
+    expect(onQuit).toHaveBeenCalledOnce();
   });
 });

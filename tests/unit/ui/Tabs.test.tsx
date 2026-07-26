@@ -56,7 +56,13 @@ describe('Tabs', () => {
       const { lastFrame } = render(
         <Tabs
           active="active"
-          counts={{ active: 1000, waiting: 99999, completed: 100000, failed: 1000000, delayed: 100000000 }}
+          counts={{
+            active: 1000,
+            waiting: 99999,
+            completed: 100000,
+            failed: 1000000,
+            delayed: 100000000,
+          }}
         />,
       );
       const frame = lastFrame() ?? '';
@@ -110,7 +116,7 @@ describe('Tabs', () => {
       // Label positions should be identical (compare indexOf for each label).
       // This is the key assertion: regardless of whether counts have loaded,
       // the labels appear at the same column positions.
-      const labels = ['Active', 'Waiting', 'Completed', 'Failed', 'Delayed'];
+      const labels = ['Delayed', 'Waiting', 'Active', 'Failed', 'Completed'];
       for (const label of labels) {
         expect(frameA.indexOf(label)).toBe(frameB.indexOf(label));
       }
@@ -137,7 +143,7 @@ describe('Tabs', () => {
       expect(frameA.length).toBe(frameB.length);
 
       // Label positions should be identical
-      const labels = ['Active', 'Waiting', 'Completed', 'Failed', 'Delayed'];
+      const labels = ['Delayed', 'Waiting', 'Active', 'Failed', 'Completed'];
       for (const label of labels) {
         expect(frameA.indexOf(label)).toBe(frameB.indexOf(label));
       }
@@ -155,7 +161,7 @@ describe('Tabs', () => {
       expect(frameA.length).toBe(frameB.length);
 
       // Label positions should be identical
-      const labels = ['Active', 'Waiting', 'Completed', 'Failed', 'Delayed'];
+      const labels = ['Delayed', 'Waiting', 'Active', 'Failed', 'Completed'];
       for (const label of labels) {
         expect(frameA.indexOf(label)).toBe(frameB.indexOf(label));
       }
@@ -165,13 +171,25 @@ describe('Tabs', () => {
       const { lastFrame: frameWithTilde } = render(
         <Tabs
           active="active"
-          counts={{ active: 99999, waiting: 99999, completed: 99999, failed: 99999, delayed: 99999 }}
+          counts={{
+            active: 99999,
+            waiting: 99999,
+            completed: 99999,
+            failed: 99999,
+            delayed: 99999,
+          }}
         />,
       );
       const { lastFrame: frameWithoutTilde } = render(
         <Tabs
           active="active"
-          counts={{ active: 100000, waiting: 100000, completed: 100000, failed: 100000, delayed: 100000 }}
+          counts={{
+            active: 100000,
+            waiting: 100000,
+            completed: 100000,
+            failed: 100000,
+            delayed: 100000,
+          }}
         />,
       );
 
@@ -183,7 +201,7 @@ describe('Tabs', () => {
 
       // Label positions should be identical even though tilde is dropped
       // (~99k → 100k)
-      const labels = ['Active', 'Waiting', 'Completed', 'Failed', 'Delayed'];
+      const labels = ['Delayed', 'Waiting', 'Active', 'Failed', 'Completed'];
       for (const label of labels) {
         expect(frameA.indexOf(label)).toBe(frameB.indexOf(label));
       }
@@ -199,7 +217,13 @@ describe('Tabs', () => {
       const { lastFrame: frameCompletelyFull } = render(
         <Tabs
           active="active"
-          counts={{ active: 999999, waiting: 999999, completed: 999999, failed: 999999, delayed: 999999 }}
+          counts={{
+            active: 999999,
+            waiting: 999999,
+            completed: 999999,
+            failed: 999999,
+            delayed: 999999,
+          }}
         />,
       );
 
@@ -244,7 +268,9 @@ describe('Tabs', () => {
     });
 
     it('always returns at most 4 characters', () => {
-      const testValues = [0, 9, 99, 999, 1000, 4000, 99999, 100000, 999999, 1000000, 99000000, 100000000, 999999999];
+      const testValues = [
+        0, 9, 99, 999, 1000, 4000, 99999, 100000, 999999, 1000000, 99000000, 100000000, 999999999,
+      ];
       for (const val of testValues) {
         expect(formatCount(val).length).toBeLessThanOrEqual(4);
       }

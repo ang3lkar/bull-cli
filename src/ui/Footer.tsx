@@ -1,6 +1,6 @@
 import { Box, Text } from 'ink';
 import { maskRedisUrl, relativeTime } from '../core/format.js';
-import type { Focus } from '../core/store.js';
+import type { Focus, NavigationView } from '../core/store.js';
 
 export interface FooterProps {
   redisUrl: string;
@@ -13,8 +13,12 @@ export interface KeyHintContext {
   searchActive: boolean;
   confirmDrain: boolean;
   confirmDuplicate: boolean;
-  detailOpen: boolean;
-  focus: Focus;
+  confirmDelete?: boolean;
+  view?: NavigationView;
+  /** @deprecated Retained temporarily for callers outside the stack UI. */
+  detailOpen?: boolean;
+  /** @deprecated Retained temporarily for callers outside the stack UI. */
+  focus?: Focus;
 }
 
 /** Separator between shortcuts in the legend line — a small middle dot with hair spacing. */
@@ -31,36 +35,28 @@ export function keyHintsFor(ctx: KeyHintContext): string {
   if (ctx.searchActive) {
     return ['Enter accept', 'Esc clear'].join(HINT_SEP);
   }
-  if (ctx.confirmDrain || ctx.confirmDuplicate) {
+  if (ctx.confirmDrain || ctx.confirmDuplicate || ctx.confirmDelete) {
     return ['y confirm', 'n/Esc cancel'].join(HINT_SEP);
   }
-  if (ctx.detailOpen) {
-    return ['c duplicate', 'Esc close', 'q quit'].join(HINT_SEP);
+  if (ctx.view?.kind === 'detail' || ctx.detailOpen) {
+    return ['R retry', 'D delete', 'c copy data', 'Esc/h back', 'q quit'].join(HINT_SEP);
   }
-  if (ctx.focus === 'sidebar') {
-    return [
-      '↑/↓ queues',
-      'p pause/resume',
-      'D drain',
-      'Tab focus',
-      '/ search',
-      'R refresh',
-      'q quit',
-    ].join(HINT_SEP);
+  if (ctx.view?.kind === 'queues' || ctx.focus === 'sidebar') {
+    return ['↑/↓ queues', 'Enter jobs', 'p pause/resume', 'D drain', 'r refresh', 'q quit'].join(
+      HINT_SEP,
+    );
   }
   return [
     '↑/↓ jobs',
-    '←/→ 1-5 tabs',
+    '1-5 status',
     'b/n page',
     'Enter detail',
-    'r retry',
-    'd delete',
+    'R retry',
+    'D delete',
     'p promote',
     'c duplicate',
-    'D drain',
-    'Tab focus',
     '/ search',
-    'R refresh',
+    'Esc/h back',
     'q quit',
   ].join(HINT_SEP);
 }

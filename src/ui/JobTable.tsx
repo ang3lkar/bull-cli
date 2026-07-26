@@ -4,20 +4,23 @@ import type { JobSummary } from '../core/types.js';
 
 export interface JobTableProps {
   jobs: JobSummary[];
+  status?: string;
   selectedJobId: string | null;
   /** 0-based current page (matches `DashboardSnapshot.page`/`JobPage.page`). */
   page: number;
   pageCount: number;
-  focused: boolean;
-  /** Injected clock; currently unused (the Timestamp column is absolute via `formatClock`, not relative) but kept on the prop surface for the Phase 8 caller. */
-  now: number;
+  /** Current terminal width; columns shrink predictably at narrow sizes. */
+  width?: number;
+  /** @deprecated Single-focus views always render the selected row as focused. */
+  focused?: boolean;
+  /** @deprecated Kept for compatibility with older callers. */
+  now?: number;
 }
 
 const ID_WIDTH = 10;
-const NAME_WIDTH = 16;
+const NAME_WIDTH = 18;
 const ATTEMPTS_WIDTH = 8;
-const TIMESTAMP_WIDTH = 19; // `formatClock` always produces exactly 19 chars.
-const PROGRESS_WIDTH = 8;
+const TIMESTAMP_WIDTH = 19;
 /** Blank columns between each field, so values don't butt up against each other. */
 const COL_GAP = '   ';
 
@@ -41,52 +44,69 @@ function rightCell(value: string, width: number): string {
   return truncate(value, width).padStart(width);
 }
 
-function selectionMarker(isSelected: boolean, focused: boolean): string {
+function selectionMarker(isSelected: boolean): string {
   if (!isSelected) {
     return '  ';
   }
-  return focused ? '❯ ' : '· ';
+  return '❯ ';
 }
 
-function progressLabel(progress: number | null): string {
-  return progress === null ? '—' : `${progress}%`;
+function columnWidths(width: number | undefined): { id: number; created: number; name: number } {
+  if (width === undefined || width >= 82) {
+    return { id: ID_WIDTH, created: TIMESTAMP_WIDTH, name: NAME_WIDTH };
+  }
+  return { id: 8, created: 12, name: Math.max(12, width - 55) };
 }
 
-function headerLine(): string {
+function headerLine(width: number | undefined): string {
+  const columns = columnWidths(width);
   return [
     '  ',
-    cell('ID', ID_WIDTH),
-    cell('Name', NAME_WIDTH),
+    cell('ID', columns.id),
+    cell('Name', columns.name),
+    cell('State', 10),
     rightCell('Attempts', ATTEMPTS_WIDTH),
-    cell('Timestamp', TIMESTAMP_WIDTH),
-    rightCell('Progress', PROGRESS_WIDTH),
+    cell('CreatedAt', columns.created),
   ].join(COL_GAP);
 }
 
-function rowLine(job: JobSummary, isSelected: boolean, focused: boolean): string {
+function rowLine(
+  job: JobSummary,
+  status: string,
+  isSelected: boolean,
+  width: number | undefined,
+): string {
+  const columns = columnWidths(width);
   return [
-    selectionMarker(isSelected, focused),
-    cell(job.id, ID_WIDTH),
-    cell(job.name, NAME_WIDTH),
+    selectionMarker(isSelected),
+    cell(job.id, columns.id),
+    cell(job.name, columns.name),
+    cell(status, 10),
     rightCell(String(job.attemptsMade), ATTEMPTS_WIDTH),
-    cell(formatClock(job.timestamp), TIMESTAMP_WIDTH),
-    rightCell(progressLabel(job.progress), PROGRESS_WIDTH),
+    cell(formatClock(job.timestamp), columns.created),
   ].join(COL_GAP);
 }
 
-/** Job list table: ID | Name | Attempts | Timestamp | Progress, plus a bottom-right page indicator. Rows/pages already come pre-filtered/paginated from the store — purely presentational. */
-export function JobTable({ jobs, selectedJobId, page, pageCount, focused }: JobTableProps) {
+/** Full-width, single-focus job table. */
+export function JobTable({
+  jobs,
+  status = '—',
+  selectedJobId,
+  page,
+  pageCount,
+  width,
+}: JobTableProps) {
   return (
     <Box flexDirection="column">
-      <Text bold>{headerLine()}</Text>
+      <Text bold>{headerLine(width)}</Text>
       {jobs.length === 0 ? (
         <Text dimColor>No jobs</Text>
       ) : (
         jobs.map((job) => {
           const isSelected = job.id === selectedJobId;
           return (
-            <Text key={job.id} inverse={isSelected && focused} bold={isSelected}>
-              {rowLine(job, isSelected, focused)}
+            <Text key={job.id} inverse={isSelected} bold={isSelected}>
+              {rowLine(job, status, isSelected, width)}
             </Text>
           );
         })

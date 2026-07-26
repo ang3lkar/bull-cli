@@ -33,6 +33,14 @@ function totalCountForStatus(counts: Record<string, number>, status: JobStatus):
   return counts[status] ?? 0;
 }
 
+/** Fetches the five UI counts without loading any job rows. */
+export async function fetchQueueCounts(queue: Queue): Promise<Record<JobStatus, number>> {
+  const counts = await queue.getJobCounts(...COUNT_TYPES);
+  return Object.fromEntries(
+    ALL_STATUSES.map((status) => [status, totalCountForStatus(counts, status)]),
+  ) as Record<JobStatus, number>;
+}
+
 function clampPage(page: number, pageCount: number): number {
   return Math.min(Math.max(page, 0), pageCount - 1);
 }
@@ -53,11 +61,8 @@ export async function fetchJobPage(
   status: JobStatus,
   page: number,
 ): Promise<JobPage> {
-  const counts = await queue.getJobCounts(...COUNT_TYPES);
-  const totalCount = totalCountForStatus(counts, status);
-  const tabCounts = Object.fromEntries(
-    ALL_STATUSES.map((s) => [s, totalCountForStatus(counts, s)]),
-  ) as Record<JobStatus, number>;
+  const counts = await fetchQueueCounts(queue);
+  const totalCount = counts[status];
   const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const currentPage = clampPage(page, pageCount);
 
@@ -76,7 +81,7 @@ export async function fetchJobPage(
       progress: normalizeProgress(job.progress),
     }));
 
-  return { jobs: summaries, totalCount, page: currentPage, pageCount, counts: tabCounts };
+  return { jobs: summaries, totalCount, page: currentPage, pageCount, counts };
 }
 
 /**

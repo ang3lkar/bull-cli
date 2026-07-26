@@ -57,8 +57,8 @@ function trackedQueue(name: string): Queue {
   return queue;
 }
 
-describe('Browse: sidebar, tabs, and job list', () => {
-  it('shows discovered queues alphabetically with a pause indicator, tabs, and the waiting job list', async () => {
+describe('Browse: queue list and job list', () => {
+  it('shows discovered queues alphabetically with counts and drills into the waiting job list', async () => {
     const alpha = trackedQueue('alpha');
     await addWaiting(alpha, 3, 'alpha-job');
     const beta = trackedQueue('beta');
@@ -75,23 +75,18 @@ describe('Browse: sidebar, tabs, and job list', () => {
       (f) => f.includes('alpha') && f.includes('beta'),
     );
 
-    // Alphabetical order: "alpha" renders before "beta" in the sidebar.
+    // Alphabetical order: "alpha" renders before "beta" in the queue table.
     expect(frame.indexOf('alpha')).toBeLessThan(frame.indexOf('beta'));
     // Paused indicator next to beta.
     expect(frame).toContain('beta ⏸');
-    // Default tab is Active (per store's TAB_ORDER); alpha (auto-selected,
-    // first alphabetically) has no active jobs.
-    expect(frame).toContain('[Active]');
-    expect(frame).toContain('No jobs');
+    expect(frame).toContain('Waiting');
+    expect(frame).toContain('❯ alpha');
 
-    // Focus the job list (sidebar's own marker switches from ❯ to · once
-    // focus moves away — a previously-absent string, so this can't pass
-    // "by accident" off a stale frame), then switch to the Waiting tab.
-    frame = await pressAndWaitForFrame(mounted, KEY.tab, (f) => f.includes('· alpha'));
+    frame = await pressAndWaitForFrame(mounted, KEY.enter, (f) => f.includes('Jobs — alpha'));
     frame = await pressAndWaitForFrame(
       mounted,
       '2',
-      (f) => f.includes('[Waiting]') && f.includes('alpha-job-2'),
+      (f) => f.includes('waiting') && f.includes('alpha-job-2'),
     );
 
     // Newest-first: alpha-job-2 was added last, so it's the top (selected) row.
@@ -121,14 +116,11 @@ describe('Detail modal', () => {
     mounted = await mountApp(REDIS_URL);
     await waitForFrame(mounted.lastFrame, (f) => f.includes(queueName));
 
-    // Sidebar's own marker flips from ❯ to · once focus moves to the job
-    // list — a previously-absent string, so waiting for it rules out
-    // dispatching the next key against a stale, pre-toggle frame/snapshot.
-    await pressAndWaitForFrame(mounted, KEY.tab, (f) => f.includes(`· ${queueName}`));
+    await pressAndWaitForFrame(mounted, KEY.enter, (f) => f.includes(`Jobs — ${queueName}`));
     let frame = await pressAndWaitForFrame(
       mounted,
-      '3',
-      (f) => f.includes('[Completed]') && f.includes('job-0'),
+      '5',
+      (f) => f.includes('completed') && f.includes('job-0'),
     );
     expect(frame).toContain('job-0');
 
@@ -151,12 +143,8 @@ describe('Action verified in Redis: delete', () => {
     mounted = await mountApp(REDIS_URL);
     await waitForFrame(mounted.lastFrame, (f) => f.includes('deleteQ'));
 
-    await pressAndWaitForFrame(mounted, KEY.tab, (f) => f.includes('· deleteQ'));
-    await pressAndWaitForFrame(
-      mounted,
-      '2',
-      (f) => f.includes('[Waiting]') && f.includes('wjob-1'),
-    );
+    await pressAndWaitForFrame(mounted, KEY.enter, (f) => f.includes('Jobs — deleteQ'));
+    await pressAndWaitForFrame(mounted, '2', (f) => f.includes('waiting') && f.includes('wjob-1'));
 
     const snapshotBeforeDelete = await waitForSnapshot(
       mounted.app.store,
@@ -165,9 +153,14 @@ describe('Action verified in Redis: delete', () => {
     const deletedId = snapshotBeforeDelete.selectedJobId;
     expect(deletedId).not.toBeNull();
 
+    await pressAndWaitForFrame(
+      mounted,
+      'D',
+      (f) => f.includes('Delete job') && f.includes('(y/n)'),
+    );
     const frame = await pressAndWaitForFrame(
       mounted,
-      'd',
+      'y',
       (f) => (f.match(/wjob-\d/g) ?? []).length === 1,
     );
     expect((frame.match(/wjob-\d/g) ?? []).length).toBe(1);
@@ -200,7 +193,7 @@ describe('Action verified in Redis: pause', () => {
 });
 
 describe('Colon-named queue does not brick the dashboard', () => {
-  it('renders sidebar + tabs with a toast for an un-openable queue, and arrow-down reaches a normal one', async () => {
+  it('renders the queue list with a toast for an un-openable queue, and arrow-down reaches a normal one', async () => {
     // A colon-containing queue name can only enter Redis via a raw key
     // write (an older bullmq version or another client) — bullmq's own
     // `Queue` constructor rejects it outright. `discovery.ts` still reports
@@ -214,31 +207,24 @@ describe('Colon-named queue does not brick the dashboard', () => {
 
     mounted = await mountApp(REDIS_URL);
 
-    // The dashboard renders fully (sidebar + tabs), not a full-screen error.
+    // The dashboard renders fully (queue list), not a full-screen error.
     let frame = await waitForFrame(
       mounted.lastFrame,
       (f) => f.includes('billing:invoices') && f.includes('zzzQ'),
     );
-    expect(frame).toContain('[Active]');
     expect(frame).not.toContain('Cannot connect to Redis');
     // Auto-selected (sorts first) and focused by default.
     expect(frame).toContain('❯ billing:invoices');
-    expect(frame).toContain('No jobs');
     expect(frame).toContain('cannot contain');
 
-    // Arrow-down (sidebar focused by default) moves off the broken queue to
-    // the normal one, which shows its real waiting job once its tab is
-    // selected — proving the dashboard stays fully navigable.
+    // Arrow-down moves off the broken queue to the normal one, which shows
+    // its real waiting job after drilling in — proving navigation survives.
     frame = await pressAndWaitForFrame(mounted, KEY.down, (f) => f.includes('❯ zzzQ'));
-    frame = await pressAndWaitForFrame(
-      mounted,
-      KEY.tab,
-      (f) => f.includes('· zzzQ'), // focus moved to the job list
-    );
+    frame = await pressAndWaitForFrame(mounted, KEY.enter, (f) => f.includes('Jobs — zzzQ'));
     frame = await pressAndWaitForFrame(
       mounted,
       '2',
-      (f) => f.includes('[Waiting]') && f.includes('wjob-0'),
+      (f) => f.includes('waiting') && f.includes('wjob-0'),
     );
     expect(frame).toContain('wjob-0');
     expect(frame).toContain('Page 1 of 1');
@@ -274,11 +260,11 @@ describe('Live refresh', () => {
     mounted = await mountApp(REDIS_URL);
     await waitForFrame(mounted.lastFrame, (f) => f.includes('liveQ'));
 
-    await pressAndWaitForFrame(mounted, KEY.tab, (f) => f.includes('· liveQ'));
+    await pressAndWaitForFrame(mounted, KEY.enter, (f) => f.includes('Jobs — liveQ'));
     let frame = await pressAndWaitForFrame(
       mounted,
       '2',
-      (f) => f.includes('[Waiting]') && f.includes('wjob-0') && f.includes('Page 1 of 1'),
+      (f) => f.includes('waiting') && f.includes('wjob-0') && f.includes('Page 1 of 1'),
     );
     expect(frame).toContain('Page 1 of 1');
 

@@ -14,8 +14,8 @@ export interface TabsProps {
   counts?: Record<JobStatus, number> | null;
 }
 
-/** Tab order/labels, matching the spec's `1`-`5` key bindings. */
-const TAB_ORDER: JobStatus[] = ['active', 'waiting', 'completed', 'failed', 'delayed'];
+/** Job lifecycle order, matching the `1`-`5` key bindings. */
+const TAB_ORDER: JobStatus[] = ['delayed', 'waiting', 'active', 'failed', 'completed'];
 
 const TAB_LABELS: Record<JobStatus, string> = {
   active: 'Active',
@@ -50,7 +50,7 @@ export function formatCount(n: number): string {
 }
 
 /**
- * Status tab row: `Active | Waiting | Completed | Failed | Delayed` with the
+ * Status tab row: `Delayed | Waiting | Active | Failed | Completed` with the
  * active tab bracketed/highlighted. For the active tab, the bold+inverse
  * highlight covers the whole cell — both the `[Label]` marker and its count
  * slot (e.g. `[Active](999k)`) — while inactive tabs render unstyled. Each

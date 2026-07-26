@@ -90,26 +90,24 @@ A missing file is perfectly fine and just falls back to defaults.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  sidebar  │  Active | Waiting | Completed | Failed | Delayed │
-│           │─────────────────────────────────────────────│
-│ emailQ    │  ID  │ Name │ Attempts │ Timestamp │ Progress │
-│ smsQ ⏸   │ ──────────────────────────────────────────── │
-│ reportQ   │  ...                                         │
-│           │                                              │
-│           │                              Page 1 of 5 ›  │
+│ bull-cli                 Enter open · Esc/h back · q quit│
+│ Queue                              Waiting Active Failed │
+│ ❯ emailQ                                 12      2      1│
+│   smsQ ⏸                                  4      0      0│
+│   reportQ                                 18      1      2│
 ├─────────────────────────────────────────────────────────┤
-│ redis://localhost:6379    Last updated: 2s ago    / search  R refresh  q quit │
+│ ↑/↓ queues · Enter jobs · p pause/resume · D drain       │
+│ redis://localhost:6379               Last updated: 2s ago│
 └─────────────────────────────────────────────────────────┘
 ```
 
-- **Sidebar** — every discovered queue, alphabetically, with a `⏸` next to paused ones.
-- **Tabs** — five job statuses per queue: Active, Waiting, Completed, Failed, Delayed.
-- **Job list** — ID, Name, Attempts, Timestamp, Progress; newest first, 10 per page.
-- **Job detail modal** (`Enter`) — pretty-printed `data`, `returnvalue`, `stacktrace` (failed jobs),
-  timestamps, and `opts`.
-- **Footer** — active Redis URL (password masked), `Last updated: Ns ago`, key hints.
+- **Queue list** — full-width queue name and waiting/active/failed/completed counts.
+- **Job list** — full-width ID, state, attempts, created time, and name table.
+- **Job detail** — queue metadata, pretty-printed data, return value, stacktrace, and options.
+- **Header and status bar** — global navigation and contextual key hints are always visible.
 
-Both the queue list and job list refresh automatically every 3 seconds, or immediately on `R`.
+Only one view is visible at a time. `Enter` drills into the selected row; `Escape` or `h` returns to
+the previous screen. Data refreshes automatically every 3 seconds, or immediately on `r`.
 
 Search (`/`) filters the job list by ID or name as you type. `Enter` accepts the current filter and
 closes the search input (the filtered list stays applied); `Escape` clears the filter entirely and
@@ -122,40 +120,40 @@ returns to the full list.
 | Key | Action |
 |---|---|
 | `q` | Quit |
-| `R` | Manual refresh |
-| `Tab` | Switch focus: sidebar ↔ job list |
-| `Escape` | Close modal / clear search |
+| `r` | Manual refresh |
+| `Esc` / `h` | Return to the previous view |
 
-### Sidebar (focused)
+### Queue list
 
 | Key | Action |
 |---|---|
 | `↑` / `↓` | Navigate queues |
+| `Enter` | Open selected queue's jobs |
 | `p` | Toggle pause/resume queue |
 | `Shift+D` | Drain queue (with confirmation prompt) |
 
-### Job list (focused)
+### Job list
 
 | Key | Action |
 |---|---|
 | `↑` / `↓` | Navigate jobs |
-| `←` / `→` or `1`–`5` | Switch status tabs |
+| `1`–`5` | Delayed, waiting, active, failed, completed |
 | `b` / `n` | Previous / next page of the job list |
-| `Enter` | Open job detail modal |
+| `Enter` | Open job detail |
 | `/` | Open search bar (filters by job ID or name) |
-| `r` | Retry job (failed jobs only) |
-| `d` | Delete job |
+| `R` | Retry job (failed jobs only) |
+| `Shift+D` | Delete job (with confirmation prompt) |
 | `p` | Promote delayed job to waiting |
 | `c` | Duplicate job — clones its payload as a new delayed job (with confirmation prompt) |
-| `Shift+D` | Drain queue (with confirmation prompt) |
 
-### Job detail modal (open)
+### Job detail
 
 | Key | Action |
 |---|---|
-| `c` | Duplicate the shown job (with confirmation prompt) |
-| `Escape` | Close the modal |
-| `q` | Quit |
+| `R` | Retry the shown job |
+| `Shift+D` | Delete the shown job (with confirmation prompt) |
+| `c` | Copy the job data JSON to the clipboard |
+| `Esc` / `h` | Return to the job list |
 
 ## Development
 

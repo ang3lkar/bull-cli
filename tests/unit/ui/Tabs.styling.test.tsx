@@ -26,7 +26,7 @@ describe('Tabs styling', () => {
     expect(activeCellMatch?.[1]).not.toMatch(/\x1b/);
 
     // Inactive cells carry no inverse (7m) style codes.
-    // After the active cell closes, " Waiting" appears without \x1b[7m prefix.
-    expect(frame).toContain('\x1b[22m\x1b[27m |  Waiting');
+    // After the active cell closes, " Failed" appears without \x1b[7m prefix.
+    expect(frame).toContain('\x1b[22m\x1b[27m |  Failed');
   });
 });

@@ -10,8 +10,8 @@ import type {
   Toast,
 } from './types.js';
 
-/** Tab order for the five status tabs, matching the spec's `1`-`5` keys. */
-const TAB_ORDER: JobStatus[] = ['active', 'waiting', 'completed', 'failed', 'delayed'];
+/** Status lifecycle order used by the job-list header and `1`-`5` shortcuts. */
+const TAB_ORDER: JobStatus[] = ['delayed', 'waiting', 'active', 'failed', 'completed'];
 
 const DEFAULT_POLL_INTERVAL_MS = 3000;
 /**
@@ -27,6 +27,12 @@ const DEFAULT_REFRESH_TIMEOUT_MS = 5000;
 const DEFAULT_TOAST_DURATION_MS = 4000;
 
 export type Focus = 'sidebar' | 'jobs';
+export type NavigationView =
+  | { kind: 'queues' }
+  | { kind: 'jobs'; queueName: string }
+  | { kind: 'detail'; queueName: string; jobId: string };
+
+export type QueueCounts = Record<JobStatus, number>;
 
 /**
  * Everything the store needs from the outside world, expressed purely in
@@ -38,7 +44,11 @@ export type Focus = 'sidebar' | 'jobs';
 export interface StoreDeps {
   discoverQueues(): Promise<QueueInfo[]>;
   fetchJobPage(queueName: string, status: JobStatus, page: number): Promise<JobPage>;
+  /** Fetches counts without loading a page. Optional for lightweight test fakes. */
+  fetchQueueCounts?(queueName: string): Promise<QueueCounts>;
   getJobDetail(queueName: string, jobId: string): Promise<JobDetail | null>;
+  /** Writes text to the system clipboard. */
+  copyToClipboard?(text: string): Promise<void>;
   actions: {
     retry(queueName: string, jobId: string): Promise<ActionResult>;
     delete(queueName: string, jobId: string): Promise<ActionResult>;
@@ -72,6 +82,10 @@ export interface DashboardSnapshot {
   connection: ConnectionStatus;
   redisUrl: string;
   queues: QueueInfo[];
+  /** Last-known counts keyed by queue name, for the top-level queue table. */
+  queueCounts: Readonly<Record<string, QueueCounts>>;
+  navigationStack: readonly NavigationView[];
+  currentView: NavigationView;
   selectedQueueName: string | null;
   tab: JobStatus;
   page: number;
@@ -104,6 +118,8 @@ export interface DashboardSnapshot {
    * on even if a background poll re-resolves the selection meanwhile.
    */
   confirmDuplicateJobId: string | null;
+  /** Job id awaiting delete confirmation, captured with its queue at request time. */
+  confirmDeleteJobId: string | null;
   focus: Focus;
   toasts: Toast[];
   lastUpdatedAt: number | null;
@@ -147,6 +163,8 @@ export class DashboardStore {
   // --- mutable state -------------------------------------------------
   private connection: ConnectionStatus = { state: 'connecting' };
   private queues: QueueInfo[] = [];
+  private readonly queueCountsByName = new Map<string, QueueCounts>();
+  private navigationStack: NavigationView[] = [{ kind: 'queues' }];
   private selectedQueueName: string | null = null;
   private tab: JobStatus = 'active';
   private page = 0;
@@ -159,6 +177,8 @@ export class DashboardStore {
   private detail: JobDetail | null = null;
   private detailLoading = false;
   private confirmDrainFlag = false;
+  /** Pending delete confirmation, captured at request time. */
+  private pendingDelete: { queueName: string; jobId: string } | null = null;
   /** Pending duplicate confirmation, captured at request time; see `requestDuplicate`. */
   private pendingDuplicate: { queueName: string; jobId: string } | null = null;
   private focus: Focus = 'sidebar';
@@ -216,10 +236,14 @@ export class DashboardStore {
 
   private buildSnapshot(): DashboardSnapshot {
     const jobs = this.jobPage?.jobs ?? [];
+    const queueCounts = Object.fromEntries(this.queueCountsByName) as Record<string, QueueCounts>;
     return Object.freeze({
       connection: this.connection,
       redisUrl: this.redisUrl,
       queues: this.queues,
+      queueCounts,
+      navigationStack: this.navigationStack,
+      currentView: this.navigationStack[this.navigationStack.length - 1],
       selectedQueueName: this.selectedQueueName,
       tab: this.tab,
       page: this.page,
@@ -235,6 +259,7 @@ export class DashboardStore {
       detailLoading: this.detailLoading,
       confirmDrain: this.confirmDrainFlag,
       confirmDuplicateJobId: this.pendingDuplicate?.jobId ?? null,
+      confirmDeleteJobId: this.pendingDelete?.jobId ?? null,
       focus: this.focus,
       toasts: this.toasts,
       lastUpdatedAt: this.lastUpdatedAt,
@@ -401,6 +426,22 @@ export class DashboardStore {
         return;
       }
 
+      if (this.deps.fetchQueueCounts) {
+        const fetchQueueCounts = this.deps.fetchQueueCounts;
+        const countResults = await Promise.allSettled(
+          names.map(async (name) => [name, await fetchQueueCounts(name)] as const),
+        );
+        if (myGen !== this.refreshGeneration) {
+          return;
+        }
+        for (const result of countResults) {
+          if (result.status === 'fulfilled') {
+            const [name, counts] = result.value;
+            this.queueCountsByName.set(name, counts);
+          }
+        }
+      }
+
       if (queueName === null) {
         this.jobPage = null;
         this.selectedJobId = null;
@@ -416,6 +457,7 @@ export class DashboardStore {
         this.page = jobPage.page;
         this.jobPage = jobPage;
         this.tabCountsByQueue.set(queueName, jobPage.counts);
+        this.queueCountsByName.set(queueName, jobPage.counts);
         this.selectedJobId = this.resolveSelectedJobId(prevSelectedJobId, prevJobs, jobPage.jobs);
       }
       // Success (or nothing to fetch) clears the dedupe tracking, so a
@@ -541,6 +583,50 @@ export class DashboardStore {
   }
 
   // --- navigation -----------------------------------------------------
+
+  /** Enters the selected queue's job list. The root queue view is never removed. */
+  pushJobsView(): void {
+    if (this.selectedQueueName === null || this.currentView().kind !== 'queues') {
+      return;
+    }
+    this.navigationStack = [
+      ...this.navigationStack,
+      { kind: 'jobs', queueName: this.selectedQueueName },
+    ];
+    // Start every queue at the beginning of the job lifecycle. The status
+    // header gives access to the remaining buckets even when Delayed is empty.
+    if (this.tab !== 'delayed') {
+      this.invalidateInFlightRefresh();
+      this.tab = 'delayed';
+      this.resetQueueOrTabSwitch();
+      this.emit();
+      void this.refresh();
+      return;
+    }
+    this.emit();
+  }
+
+  /**
+   * Pops one screen from the explicit navigation stack. Detail data is
+   * discarded when leaving its screen so a later Enter always fetches live
+   * state, while queue/job selection remains intact on the underlying view.
+   */
+  popView(): void {
+    if (this.navigationStack.length === 1) {
+      return;
+    }
+    const leaving = this.currentView();
+    this.navigationStack = this.navigationStack.slice(0, -1);
+    if (leaving.kind === 'detail') {
+      this.detail = null;
+      this.detailLoading = false;
+    }
+    this.emit();
+  }
+
+  private currentView(): NavigationView {
+    return this.navigationStack[this.navigationStack.length - 1];
+  }
 
   /**
    * Selects a queue by name or (0-based) index into the current `queues`
@@ -708,7 +794,7 @@ export class DashboardStore {
     this.emit();
   }
 
-  // --- detail modal -------------------------------------------------------
+  // --- detail view --------------------------------------------------------
 
   /**
    * Fetches and opens the detail modal for the currently selected job.
@@ -722,6 +808,15 @@ export class DashboardStore {
    */
   async openDetail(): Promise<void> {
     if (this.selectedQueueName === null || this.selectedJobId === null) {
+      return;
+    }
+    if (this.currentView().kind === 'queues') {
+      this.navigationStack = [
+        ...this.navigationStack,
+        { kind: 'jobs', queueName: this.selectedQueueName },
+      ];
+    }
+    if (this.currentView().kind !== 'jobs') {
       return;
     }
     const queueName = this.selectedQueueName;
@@ -747,15 +842,15 @@ export class DashboardStore {
       return;
     }
     this.detail = detail;
+    this.navigationStack = [...this.navigationStack, { kind: 'detail', queueName, jobId }];
     this.emit();
   }
 
   closeDetail(): void {
-    if (this.detail === null) {
+    if (this.currentView().kind !== 'detail') {
       return;
     }
-    this.detail = null;
-    this.emit();
+    this.popView();
   }
 
   // --- drain flow -----------------------------------------------------
@@ -807,14 +902,11 @@ export class DashboardStore {
    * pressed `c`, never on whatever the selection drifted to since.
    */
   requestDuplicate(): void {
-    if (
-      this.selectedQueueName === null ||
-      this.selectedJobId === null ||
-      this.pendingDuplicate !== null
-    ) {
+    const target = this.currentJobTarget();
+    if (target === null || this.pendingDuplicate !== null) {
       return;
     }
-    this.pendingDuplicate = { queueName: this.selectedQueueName, jobId: this.selectedJobId };
+    this.pendingDuplicate = target;
     this.emit();
   }
 
@@ -844,6 +936,64 @@ export class DashboardStore {
     await this.refresh();
   }
 
+  // --- delete confirmation / clipboard -----------------------------------
+
+  /** Requests deletion of the current job, capturing its target before polling can move selection. */
+  requestDelete(): void {
+    const target = this.currentJobTarget();
+    if (target === null || this.pendingDelete !== null) {
+      return;
+    }
+    this.pendingDelete = target;
+    this.emit();
+  }
+
+  cancelDelete(): void {
+    if (this.pendingDelete === null) {
+      return;
+    }
+    this.pendingDelete = null;
+    this.emit();
+  }
+
+  async confirmDelete(): Promise<void> {
+    if (this.pendingDelete === null) {
+      return;
+    }
+    const target = this.pendingDelete;
+    this.pendingDelete = null;
+    this.emit();
+    const result = await this.deps.actions.delete(target.queueName, target.jobId);
+    if (!result.ok) {
+      this.pushToast(result.message);
+      return;
+    }
+    this.pushToast(result.info ?? `Job ${target.jobId} deleted`);
+    if (this.currentView().kind === 'detail') {
+      this.popView();
+    }
+    await this.refresh();
+  }
+
+  /** Copies the loaded detail payload, reporting clipboard failures as a toast. */
+  async copyDetailData(): Promise<void> {
+    if (this.currentView().kind !== 'detail' || this.detail === null) {
+      return;
+    }
+    if (!this.deps.copyToClipboard) {
+      this.pushToast('Clipboard support is unavailable');
+      return;
+    }
+    try {
+      await this.deps.copyToClipboard(JSON.stringify(this.detail.data, null, 2) ?? 'undefined');
+      this.pushToast('Job data copied to clipboard');
+    } catch (err) {
+      this.pushToast(
+        `Could not copy job data: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   // --- job / queue actions ----------------------------------------------
 
   async retrySelected(): Promise<void> {
@@ -861,10 +1011,11 @@ export class DashboardStore {
   private async runJobAction(
     action: (queueName: string, jobId: string) => Promise<ActionResult>,
   ): Promise<void> {
-    if (this.selectedQueueName === null || this.selectedJobId === null) {
+    const target = this.currentJobTarget();
+    if (target === null) {
       return;
     }
-    const result = await action(this.selectedQueueName, this.selectedJobId);
+    const result = await action(target.queueName, target.jobId);
     if (!result.ok) {
       this.pushToast(result.message);
       return;
@@ -873,6 +1024,17 @@ export class DashboardStore {
       this.pushToast(result.info);
     }
     await this.refresh();
+  }
+
+  private currentJobTarget(): { queueName: string; jobId: string } | null {
+    const view = this.currentView();
+    if (view.kind === 'detail') {
+      return { queueName: view.queueName, jobId: view.jobId };
+    }
+    if (this.selectedQueueName === null || this.selectedJobId === null) {
+      return null;
+    }
+    return { queueName: this.selectedQueueName, jobId: this.selectedJobId };
   }
 
   /** Sidebar `p`: toggles pause/resume on the selected queue. */

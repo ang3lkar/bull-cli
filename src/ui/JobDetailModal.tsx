@@ -4,6 +4,7 @@ import type { JobDetail } from '../core/types.js';
 
 export interface JobDetailModalProps {
   detail: JobDetail;
+  queueName?: string;
 }
 
 /**
@@ -69,7 +70,7 @@ const LEFT_COLUMN_WIDTH = 34;
  * the caller's concern: this component always renders a fully-loaded
  * `detail` (the parent only mounts it once `detailLoading` is false).
  */
-export function JobDetailModal({ detail }: JobDetailModalProps) {
+export function JobDetailModal({ detail, queueName }: JobDetailModalProps) {
   const progressLine =
     detail.progress === null ? prettyJson(detail.rawProgress) : `${detail.progress}%`;
 
@@ -79,6 +80,7 @@ export function JobDetailModal({ detail }: JobDetailModalProps) {
         <Text bold>
           {detail.name} <Text dimColor>#{detail.id}</Text>
         </Text>
+        {queueName !== undefined && <MetaRow label="Queue" value={queueName} />}
         <MetaRow label="Created" value={formatClock(detail.timestamps.created)} />
         <MetaRow label="Processed" value={timestampOrDash(detail.timestamps.processed)} />
         <MetaRow label="Finished" value={timestampOrDash(detail.timestamps.finished)} />

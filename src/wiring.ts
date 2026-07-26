@@ -1,4 +1,5 @@
 import type { Queue } from 'bullmq';
+import clipboard from 'clipboardy';
 import { connectionFromUrl } from './config.js';
 import {
   deleteJob,
@@ -9,7 +10,7 @@ import {
   togglePauseQueue,
 } from './core/actions.js';
 import { discoverQueues } from './core/discovery.js';
-import { fetchJobPage, getJobDetail } from './core/jobs.js';
+import { fetchJobPage, fetchQueueCounts, getJobDetail } from './core/jobs.js';
 import { createQueueRegistry, type QueueRegistry } from './core/queueRegistry.js';
 import { createRedisClient } from './core/redis.js';
 import { DashboardStore, type StoreDeps } from './core/store.js';
@@ -102,8 +103,11 @@ export function createApp(redisUrl: string, prefix: string, pollIntervalMs?: num
     discoverQueues: () => discoverQueues(redis, prefix),
     fetchJobPage: (queueName, status, page) =>
       safeFetch(registry, queueName, (queue) => fetchJobPage(queue, status, page)),
+    fetchQueueCounts: (queueName) =>
+      safeFetch(registry, queueName, (queue) => fetchQueueCounts(queue)),
     getJobDetail: (queueName, jobId) =>
       safeFetch(registry, queueName, (queue) => getJobDetail(queue, jobId)),
+    copyToClipboard: (text) => clipboard.write(text),
     actions: {
       retry: (queueName, jobId) =>
         safeAction(registry, queueName, (queue) => retryJob(queue, jobId)),

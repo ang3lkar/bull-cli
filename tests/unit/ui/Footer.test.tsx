@@ -81,7 +81,7 @@ describe('keyHintsFor', () => {
     ).toBe('y confirm · n/Esc cancel');
   });
 
-  it('detail modal open: "c duplicate · Esc close · q quit"', () => {
+  it('detail view shows retry, delete, copy, and back actions', () => {
     expect(
       keyHintsFor({
         searchActive: false,
@@ -90,7 +90,7 @@ describe('keyHintsFor', () => {
         detailOpen: true,
         focus: 'jobs',
       }),
-    ).toBe('c duplicate · Esc close · q quit');
+    ).toBe('R retry · D delete · c copy data · Esc/h back · q quit');
   });
 
   it('sidebar focused', () => {
@@ -102,7 +102,7 @@ describe('keyHintsFor', () => {
         detailOpen: false,
         focus: 'sidebar',
       }),
-    ).toBe('↑/↓ queues · p pause/resume · D drain · Tab focus · / search · R refresh · q quit');
+    ).toBe('↑/↓ queues · Enter jobs · p pause/resume · D drain · r refresh · q quit');
   });
 
   it('job list focused', () => {
@@ -115,7 +115,7 @@ describe('keyHintsFor', () => {
         focus: 'jobs',
       }),
     ).toBe(
-      '↑/↓ jobs · ←/→ 1-5 tabs · b/n page · Enter detail · r retry · d delete · p promote · c duplicate · D drain · Tab focus · / search · R refresh · q quit',
+      '↑/↓ jobs · 1-5 status · b/n page · Enter detail · R retry · D delete · p promote · c duplicate · / search · Esc/h back · q quit',
     );
   });
 
