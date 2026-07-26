@@ -54,8 +54,14 @@ function selectionMarker(isSelected: boolean): string {
 }
 
 function columnWidths(width: number | undefined): { id: number; created: number; name: number } {
-  if (width === undefined || width >= 82) {
+  if (width === undefined) {
     return { id: ID_WIDTH, created: TIMESTAMP_WIDTH, name: NAME_WIDTH };
+  }
+  if (width >= 80) {
+    // Marker + ID + State + Attempts + CreatedAt + five column gaps.
+    // Let Name absorb remaining room so rows visually align with the
+    // full-width status header instead of ending at a fixed column.
+    return { id: ID_WIDTH, created: TIMESTAMP_WIDTH, name: Math.max(12, width - 64) };
   }
   return { id: 8, created: 12, name: Math.max(12, width - 55) };
 }

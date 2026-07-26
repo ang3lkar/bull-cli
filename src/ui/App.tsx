@@ -56,6 +56,8 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
   // (whose fake stdout has no `rows`) — `height={undefined}` is a no-op for
   // Yoga, so every existing test frame is unaffected.
   const { columns, rows } = useTerminalDimensions();
+  // Root padding consumes one column on each side.
+  const contentWidth = columns === undefined ? undefined : Math.max(1, columns - 2);
 
   if (snapshot.connection.state === 'error') {
     return (
@@ -115,7 +117,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
                 queues={snapshot.queues}
                 counts={snapshot.queueCounts}
                 selectedName={snapshot.selectedQueueName}
-                width={columns}
+                width={contentWidth}
               />
             </Box>
           </>
@@ -139,7 +141,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
                 selectedJobId={snapshot.selectedJobId}
                 page={snapshot.page}
                 pageCount={snapshot.jobPage?.pageCount ?? 1}
-                width={columns}
+                width={contentWidth}
                 counts={snapshot.tabCounts}
               />
             </Box>

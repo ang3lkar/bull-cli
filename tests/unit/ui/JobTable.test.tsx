@@ -124,7 +124,7 @@ describe('JobTable', () => {
     expect(lastFrame()).toContain('…');
   });
 
-  it('fits every table row within an 80-column terminal', () => {
+  it('stretches every table row to an 80-column terminal', () => {
     const { lastFrame } = render(
       <JobTable
         jobs={[
@@ -143,8 +143,12 @@ describe('JobTable', () => {
         width={80}
       />,
     );
-    for (const line of (lastFrame() ?? '').split('\n').filter((line) => !line.includes('Page'))) {
-      expect(line.length).toBeLessThanOrEqual(80);
-    }
+    const longestRow = Math.max(
+      ...(lastFrame() ?? '')
+        .split('\n')
+        .filter((line) => !line.includes('Page'))
+        .map((line) => line.length),
+    );
+    expect(longestRow).toBe(80);
   });
 });
