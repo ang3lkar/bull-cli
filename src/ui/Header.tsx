@@ -7,12 +7,16 @@ export interface HeaderProps {
   version: string;
   view?: NavigationView;
   status?: JobStatus;
+  /** Available content width, excluding the app's horizontal padding. */
+  width?: number;
 }
 
 interface Shortcut {
   key: string;
   label: string;
 }
+
+const MAX_CONTEXTUAL_ROWS = 10;
 
 const GLOBAL_SHORTCUTS: Shortcut[] = [
   { key: 'r', label: 'Refresh' },
@@ -56,37 +60,64 @@ function shortcutsFor(view: NavigationView | undefined, status: JobStatus | unde
   ];
 }
 
-function ShortcutSection({ shortcuts, color }: { shortcuts: Shortcut[]; color: string }) {
+function ShortcutCell({
+  shortcut,
+  color,
+  width,
+}: {
+  shortcut: Shortcut;
+  color: string;
+  width: number;
+}) {
   return (
-    <Box flexDirection="column">
-      <Box flexWrap="wrap">
-        {shortcuts.map((shortcut) => (
-          <Box key={shortcut.key} width={24}>
-            <Box width={7}>
-              <Text inverse color={color}>
-                {` ${shortcut.key} `}
-              </Text>
-            </Box>
-            <Text dimColor> {shortcut.label}</Text>
-          </Box>
-        ))}
+    <Box width={width}>
+      <Box width={8}>
+        <Text color={color}>{`<${shortcut.key}>`}</Text>
       </Box>
+      <Text dimColor>{shortcut.label}</Text>
     </Box>
+  );
+}
+
+function shortcutColumns(shortcuts: Shortcut[]): Shortcut[][] {
+  return Array.from({ length: Math.ceil(shortcuts.length / MAX_CONTEXTUAL_ROWS) }, (_, index) =>
+    shortcuts.slice(index * MAX_CONTEXTUAL_ROWS, (index + 1) * MAX_CONTEXTUAL_ROWS),
   );
 }
 
 function ShortcutLegend({
   view,
   status,
+  width,
 }: {
   view: NavigationView | undefined;
   status: JobStatus | undefined;
+  width: number | undefined;
 }) {
+  const basicWidth = width === undefined ? 22 : Math.min(22, Math.max(18, Math.floor(width / 3)));
+  const contextualWidth = 20;
+  const contextualColumns = shortcutColumns(shortcutsFor(view, status));
+
   return (
-    <Box flexDirection="column" marginTop={1}>
-      <ShortcutSection shortcuts={basicShortcutsFor(view)} color="yellow" />
-      <Box marginTop={1}>
-        <ShortcutSection shortcuts={shortcutsFor(view, status)} color="cyan" />
+    <Box flexDirection="row" marginTop={1} width={width}>
+      <Box flexDirection="column" width={basicWidth} marginRight={1}>
+        {basicShortcutsFor(view).map((shortcut) => (
+          <ShortcutCell key={shortcut.key} shortcut={shortcut} color="yellow" width={basicWidth} />
+        ))}
+      </Box>
+      <Box flexDirection="row" flexGrow={1}>
+        {contextualColumns.map((column) => (
+          <Box key={column[0]?.key} flexDirection="column" width={contextualWidth}>
+            {column.map((shortcut) => (
+              <ShortcutCell
+                key={shortcut.key}
+                shortcut={shortcut}
+                color="cyan"
+                width={contextualWidth}
+              />
+            ))}
+          </Box>
+        ))}
       </Box>
     </Box>
   );
@@ -98,7 +129,7 @@ function ShortcutLegend({
  * lone bottom border, so it's a single-style box with the other three sides
  * switched off — leaving just the horizontal line under the title.
  */
-export function Header({ version, view, status }: HeaderProps) {
+export function Header({ version, view, status, width }: HeaderProps) {
   const breadcrumbs =
     view?.kind === 'jobs'
       ? ['Queues', view.queueName]
@@ -117,7 +148,7 @@ export function Header({ version, view, status }: HeaderProps) {
           </Text>
         ))}
       </Box>
-      <ShortcutLegend view={view} status={status} />
+      <ShortcutLegend view={view} status={status} width={width} />
     </Box>
   );
 }

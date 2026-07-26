@@ -45,4 +45,19 @@ describe('Header', () => {
     expect(failed).toContain('Retry');
     expect(failed).not.toContain('Promote');
   });
+
+  it('keeps basic and contextual shortcuts in compact columns at 80 characters', () => {
+    const { lastFrame } = render(
+      <Header
+        version="1.2.3"
+        view={{ kind: 'jobs', queueName: 'emailQ' }}
+        status="delayed"
+        width={78}
+      />,
+    );
+    const shortcutRows = (lastFrame() ?? '').split('\n').filter((line) => line.includes('<'));
+    expect(shortcutRows.length).toBeLessThanOrEqual(10);
+    expect(lastFrame()).toContain('<r>');
+    expect(lastFrame()).toContain('<↑/↓>');
+  });
 });
