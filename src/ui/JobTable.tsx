@@ -171,7 +171,7 @@ export function JobTable({
               </Text>
             );
           })}
-          <Box justifyContent="flex-end">
+          <Box justifyContent="flex-end" marginTop={1}>
             <Text dimColor>
               Page {page + 1} of {pageCount}
             </Text>
