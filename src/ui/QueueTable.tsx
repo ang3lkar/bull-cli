@@ -44,9 +44,7 @@ export function QueueTable({ queues, counts, selectedName, width }: QueueTablePr
   return (
     <Box flexDirection="column">
       <Box>
-        <Box width={nameWidth + 2}>
-          <Text bold> Queue</Text>
-        </Box>
+        <Box width={nameWidth + 2} />
         <Box width={9} justifyContent="flex-end">
           <Text bold color="yellow">
             Delayed
