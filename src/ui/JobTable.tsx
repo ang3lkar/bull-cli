@@ -1,16 +1,18 @@
 import { Box, Text } from 'ink';
 import { formatClock } from '../core/format.js';
-import type { JobSummary } from '../core/types.js';
+import type { JobStatus, JobSummary } from '../core/types.js';
 
 export interface JobTableProps {
   jobs: JobSummary[];
-  status?: string;
+  status?: JobStatus;
   selectedJobId: string | null;
   /** 0-based current page (matches `DashboardSnapshot.page`/`JobPage.page`). */
   page: number;
   pageCount: number;
   /** Current terminal width; columns shrink predictably at narrow sizes. */
   width?: number;
+  /** Counts for all status buckets, used to guide an empty list to useful alternatives. */
+  counts?: Record<JobStatus, number> | null;
   /** @deprecated Single-focus views always render the selected row as focused. */
   focused?: boolean;
   /** @deprecated Kept for compatibility with older callers. */
@@ -87,35 +89,89 @@ function rowLine(
   ].join(COL_GAP);
 }
 
+const STATUS_ORDER: JobStatus[] = ['delayed', 'waiting', 'active', 'failed', 'completed'];
+const STATUS_KEYS: Record<JobStatus, string> = {
+  delayed: '1',
+  waiting: '2',
+  active: '3',
+  failed: '4',
+  completed: '5',
+};
+
+function titleCase(value: string): string {
+  return `${value[0].toUpperCase()}${value.slice(1)}`;
+}
+
+function statusColor(status: string): string | undefined {
+  if (status === 'failed') {
+    return 'red';
+  }
+  if (status === 'active') {
+    return 'cyan';
+  }
+  if (status === 'waiting' || status === 'delayed') {
+    return 'yellow';
+  }
+  return undefined;
+}
+
+function EmptyJobs({
+  status,
+  counts,
+}: {
+  status: JobStatus;
+  counts: Record<JobStatus, number> | null | undefined;
+}) {
+  const alternatives =
+    counts === null || counts === undefined
+      ? []
+      : STATUS_ORDER.filter((candidate) => candidate !== status && counts[candidate] > 0).map(
+          (candidate) => `${STATUS_KEYS[candidate]} ${titleCase(candidate)}`,
+        );
+
+  return (
+    <Box flexDirection="column" alignItems="center" marginTop={2}>
+      <Text color={statusColor(status)} dimColor={status === 'completed'}>
+        ◌ No {status} jobs
+      </Text>
+      <Text dimColor>This queue has no jobs in this status.</Text>
+      {alternatives.length > 0 && <Text dimColor>Try {alternatives.join(' · ')}</Text>}
+    </Box>
+  );
+}
+
 /** Full-width, single-focus job table. */
 export function JobTable({
   jobs,
-  status = '—',
+  status = 'active',
   selectedJobId,
   page,
   pageCount,
   width,
+  counts,
 }: JobTableProps) {
   return (
     <Box flexDirection="column">
       <Text bold>{headerLine(width)}</Text>
       {jobs.length === 0 ? (
-        <Text dimColor>No jobs</Text>
+        <EmptyJobs status={status} counts={counts} />
       ) : (
-        jobs.map((job) => {
-          const isSelected = job.id === selectedJobId;
-          return (
-            <Text key={job.id} inverse={isSelected} bold={isSelected}>
-              {rowLine(job, status, isSelected, width)}
+        <>
+          {jobs.map((job) => {
+            const isSelected = job.id === selectedJobId;
+            return (
+              <Text key={job.id} inverse={isSelected} bold={isSelected}>
+                {rowLine(job, status, isSelected, width)}
+              </Text>
+            );
+          })}
+          <Box justifyContent="flex-end">
+            <Text dimColor>
+              Page {page + 1} of {pageCount}
             </Text>
-          );
-        })
+          </Box>
+        </>
       )}
-      <Box justifyContent="flex-end">
-        <Text dimColor>
-          Page {page + 1} of {pageCount}
-        </Text>
-      </Box>
     </Box>
   );
 }

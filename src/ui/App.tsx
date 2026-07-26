@@ -140,6 +140,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
                 page={snapshot.page}
                 pageCount={snapshot.jobPage?.pageCount ?? 1}
                 width={columns}
+                counts={snapshot.tabCounts}
               />
             </Box>
           </>

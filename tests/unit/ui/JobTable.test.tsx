@@ -57,11 +57,21 @@ describe('JobTable', () => {
     expect(lastFrame()).toContain('Page 2 of 5');
   });
 
-  it('shows a subtle "No jobs" line when the list is empty', () => {
+  it('shows an empty state without pagination when the status has no jobs', () => {
     const { lastFrame } = render(
-      <JobTable jobs={[]} selectedJobId={null} page={0} pageCount={1} focused={false} now={NOW} />,
+      <JobTable
+        jobs={[]}
+        status="delayed"
+        counts={{ active: 2, waiting: 3, completed: 0, failed: 1, delayed: 0 }}
+        selectedJobId={null}
+        page={0}
+        pageCount={1}
+      />,
     );
-    expect(lastFrame()).toContain('No jobs');
+    expect(lastFrame()).toContain('◌ No delayed jobs');
+    expect(lastFrame()).toContain('This queue has no jobs in this status.');
+    expect(lastFrame()).toContain('Try 2 Waiting · 3 Active · 4 Failed');
+    expect(lastFrame()).not.toContain('Page');
   });
 
   it('marks the selected row with the focused marker when focused', () => {
