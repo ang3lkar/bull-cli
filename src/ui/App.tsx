@@ -4,7 +4,7 @@ import type { DashboardStore } from '../core/store.js';
 import { ConfirmPrompt } from './ConfirmPrompt.js';
 import { EmptyState } from './EmptyState.js';
 import { ErrorScreen } from './ErrorScreen.js';
-import { Footer, keyHintsFor } from './Footer.js';
+import { Footer } from './Footer.js';
 import { Header } from './Header.js';
 import { useKeymap } from './hooks/useKeymap.js';
 import { useStore } from './hooks/useStore.js';
@@ -77,18 +77,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
         <Box flexGrow={1}>
           <EmptyState url={snapshot.redisUrl} />
         </Box>
-        <Footer
-          redisUrl={snapshot.redisUrl}
-          lastUpdatedAt={snapshot.lastUpdatedAt}
-          now={now}
-          hints={keyHintsFor({
-            searchActive: snapshot.search.active,
-            confirmDrain: snapshot.confirmDrain,
-            confirmDuplicate: snapshot.confirmDuplicateJobId !== null,
-            confirmDelete: snapshot.confirmDeleteJobId !== null,
-            view: snapshot.currentView,
-          })}
-        />
+        <Footer redisUrl={snapshot.redisUrl} lastUpdatedAt={snapshot.lastUpdatedAt} now={now} />
       </Box>
     );
   }
@@ -153,18 +142,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
         )}
       </Box>
       <Toast toasts={snapshot.toasts} />
-      <Footer
-        redisUrl={snapshot.redisUrl}
-        lastUpdatedAt={snapshot.lastUpdatedAt}
-        now={now}
-        hints={keyHintsFor({
-          searchActive: snapshot.search.active,
-          confirmDrain: snapshot.confirmDrain,
-          confirmDuplicate: snapshot.confirmDuplicateJobId !== null,
-          confirmDelete: snapshot.confirmDeleteJobId !== null,
-          view: snapshot.currentView,
-        })}
-      />
+      <Footer redisUrl={snapshot.redisUrl} lastUpdatedAt={snapshot.lastUpdatedAt} now={now} />
     </Box>
   );
 }

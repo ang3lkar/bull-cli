@@ -7,6 +7,79 @@ export interface HeaderProps {
   view?: NavigationView;
 }
 
+interface Shortcut {
+  key: string;
+  label: string;
+}
+
+const GLOBAL_SHORTCUTS: Shortcut[] = [
+  { key: 'r', label: 'Refresh' },
+  { key: 'q', label: 'Quit' },
+];
+
+function basicShortcutsFor(view: NavigationView | undefined): Shortcut[] {
+  return view?.kind === 'queues' || view === undefined
+    ? GLOBAL_SHORTCUTS
+    : [{ key: 'Esc/h', label: 'Back' }, ...GLOBAL_SHORTCUTS];
+}
+
+function shortcutsFor(view: NavigationView | undefined): Shortcut[] {
+  if (view?.kind === 'detail') {
+    return [
+      { key: 'R', label: 'Retry' },
+      { key: 'D', label: 'Delete' },
+      { key: 'c', label: 'Copy data' },
+    ];
+  }
+  if (view?.kind === 'jobs') {
+    return [
+      { key: '↑/↓', label: 'Move' },
+      { key: '1-5', label: 'Status' },
+      { key: 'b/n', label: 'Page' },
+      { key: 'Enter', label: 'Detail' },
+      { key: '/', label: 'Filter' },
+      { key: 'R', label: 'Retry' },
+      { key: 'D', label: 'Delete' },
+      { key: 'p', label: 'Promote' },
+      { key: 'c', label: 'Duplicate' },
+    ];
+  }
+  return [
+    { key: '↑/↓', label: 'Move' },
+    { key: 'Enter', label: 'Jobs' },
+    { key: 'p', label: 'Pause/resume' },
+    { key: 'D', label: 'Drain' },
+  ];
+}
+
+function ShortcutSection({ shortcuts, color }: { shortcuts: Shortcut[]; color: string }) {
+  return (
+    <Box flexDirection="column">
+      <Box flexWrap="wrap">
+        {shortcuts.map((shortcut) => (
+          <Box key={shortcut.key} width={24}>
+            <Text inverse color={color}>
+              {` ${shortcut.key} `}
+            </Text>
+            <Text dimColor> {shortcut.label}</Text>
+          </Box>
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
+function ShortcutLegend({ view }: { view: NavigationView | undefined }) {
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <ShortcutSection shortcuts={basicShortcutsFor(view)} color="yellow" />
+      <Box marginTop={1}>
+        <ShortcutSection shortcuts={shortcutsFor(view)} color="cyan" />
+      </Box>
+    </Box>
+  );
+}
+
 /**
  * Top title bar: the app name and version (`bull-cli - v0.1.0`), with a
  * bottom rule separating it from the rest of the screen. Ink can't draw a
@@ -27,11 +100,7 @@ export function Header({ version, view }: HeaderProps) {
         <Text dimColor> - v{version} </Text>
         <Text color="cyan">{viewLabel}</Text>
       </Box>
-      <Text dimColor>
-        <Text color="yellow">↑↓</Text> move <Text color="cyan">Enter</Text> open{' '}
-        <Text color="yellow">Esc/h</Text> back <Text color="cyan">/</Text> filter{' '}
-        <Text color="yellow">r</Text> refresh <Text color="red">q</Text> quit
-      </Text>
+      <ShortcutLegend view={view} />
     </Box>
   );
 }

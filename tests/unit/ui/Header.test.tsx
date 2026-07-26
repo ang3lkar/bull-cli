@@ -13,4 +13,15 @@ describe('Header', () => {
     // A border-bottom rule (box-drawing horizontals) appears below the title.
     expect(lastFrame()).toMatch(/─{3,}/);
   });
+
+  it('renders the current view shortcuts as a key/action grid', () => {
+    const { lastFrame } = render(
+      <Header version="1.2.3" view={{ kind: 'jobs', queueName: 'email' }} />,
+    );
+    expect(lastFrame()).toContain('Quit');
+    expect(lastFrame()).toContain('1-5');
+    expect(lastFrame()).toContain('Status');
+    expect(lastFrame()).toContain('Duplicate');
+    expect(lastFrame()).toContain('Refresh');
+  });
 });
