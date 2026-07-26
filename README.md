@@ -89,39 +89,54 @@ A missing file is perfectly fine and just falls back to defaults.
 ## Layout
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│ bull-cli                 Enter open · Esc/h back · q quit│
-│ Queue                              Waiting Active Failed │
-│ ❯ emailQ                                 12      2      1│
-│   smsQ ⏸                                  4      0      0│
-│   reportQ                                 18      1      2│
-├─────────────────────────────────────────────────────────┤
-│ ↑/↓ queues · Enter jobs · p pause/resume · D drain       │
-│ redis://localhost:6379               Last updated: 2s ago│
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│ bull-cli - v0.1.0   Queues > emailQ                                      │
+│ [Esc/h] Back    [r] Refresh    [q] Quit                                  │
+│                                                                          │
+│ [↑/↓] Move      [1-5] Status    [Enter] Detail    [/] Filter             │
+│                                                                          │
+│ Jobs — emailQ                                                           │
+│ [Delayed](0) | Waiting (12) | Active (2) | Failed (1) | Completed (4)  │
+│                                                                          │
+│    ID          Name                 State     Attempts  CreatedAt        │
+│ ❯ 12          send-email            waiting          0  2026-07-26 ...  │
+│    ...                                                                   │
+│                                                                          │
+│                                                          Page 1 of 2      │
+│ redis://localhost:6379                            Last updated: 2s ago  │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Queue list** — full-width queue name and waiting/active/failed/completed counts.
-- **Job list** — full-width ID, state, attempts, created time, and name table.
-- **Job detail** — queue metadata, pretty-printed data, return value, stacktrace, and options.
-- **Header and status bar** — global navigation and contextual key hints are always visible.
+- **Queue list** — a full-width list with the queue name and lifecycle counters in order:
+  delayed, waiting, active, failed, completed. Paused queues carry a `⏸` marker.
+- **Job list** — a full-width `ID`, `Name`, `State`, `Attempts`, `CreatedAt` table. The name
+  column expands to fill the terminal. The status header provides counts and selection feedback.
+- **Job detail** — queue and job metadata, pretty-printed data, return value, stacktrace, and
+  options.
+- **Header** — breadcrumbs identify the active location (`Queues > emailQ > job #43`) and a
+  k9s-style shortcut grid separates basic shortcuts (yellow) from contextual ones (cyan).
+- **Status bar** — a compact Redis URL (password masked) and last-refresh timestamp.
 
 Only one view is visible at a time. `Enter` drills into the selected row; `Escape` or `h` returns to
-the previous screen. Data refreshes automatically every 3 seconds, or immediately on `r`.
+the previous screen. Opening a queue starts on the **Delayed** status; use the status shortcuts to
+choose another bucket. Data refreshes automatically every 3 seconds, or immediately on `r`.
 
 Search (`/`) filters the job list by ID or name as you type. `Enter` accepts the current filter and
 closes the search input (the filtered list stays applied); `Escape` clears the filter entirely and
 returns to the full list.
 
+When a status has no jobs, the list shows a contextual empty state instead of pagination and points
+to populated status buckets with their numeric shortcuts.
+
 ## Keyboard bindings
 
-### Global
+### Basic
 
 | Key | Action |
 |---|---|
 | `q` | Quit |
 | `r` | Manual refresh |
-| `Esc` / `h` | Return to the previous view |
+| `Esc` / `h` | Return to the previous view (outside the queue dashboard) |
 
 ### Queue list
 
@@ -137,21 +152,25 @@ returns to the full list.
 | Key | Action |
 |---|---|
 | `↑` / `↓` | Navigate jobs |
-| `1`–`5` | Delayed, waiting, active, failed, completed |
+| `1` | Delayed jobs |
+| `2` | Waiting jobs |
+| `3` | Active jobs |
+| `4` | Failed jobs |
+| `5` | Completed jobs |
 | `b` / `n` | Previous / next page of the job list |
 | `Enter` | Open job detail |
 | `/` | Open search bar (filters by job ID or name) |
-| `R` | Retry job (failed jobs only) |
+| `R` | Retry job (failed jobs only; shown only for Failed) |
 | `Shift+D` | Delete job (with confirmation prompt) |
-| `p` | Promote delayed job to waiting |
+| `p` | Promote a delayed job to waiting (shown only for Delayed) |
 | `c` | Duplicate job — clones its payload as a new delayed job (with confirmation prompt) |
 
 ### Job detail
 
 | Key | Action |
 |---|---|
-| `R` | Retry the shown job |
-| `Shift+D` | Delete the shown job (with confirmation prompt) |
+| `R` | Retry the shown job (failed jobs only) |
+| `Shift+D` | Delete the shown job (with confirmation prompt when supported) |
 | `c` | Copy the job data JSON to the clipboard |
 | `Esc` / `h` | Return to the job list |
 
