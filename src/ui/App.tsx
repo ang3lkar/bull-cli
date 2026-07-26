@@ -62,7 +62,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
   if (snapshot.connection.state === 'error') {
     return (
       <Box flexDirection="column" height={rows} paddingTop={1} paddingX={1}>
-        <Header version={version} view={snapshot.currentView} />
+        <Header version={version} view={snapshot.currentView} status={snapshot.tab} />
         <Box flexGrow={1}>
           <ErrorScreen url={snapshot.connection.url} message={snapshot.connection.message} />
         </Box>
@@ -73,7 +73,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
   if (snapshot.queues.length === 0) {
     return (
       <Box flexDirection="column" height={rows} paddingTop={1} paddingX={1}>
-        <Header version={version} view={snapshot.currentView} />
+        <Header version={version} view={snapshot.currentView} status={snapshot.tab} />
         <Box flexGrow={1}>
           <EmptyState url={snapshot.redisUrl} />
         </Box>
@@ -84,7 +84,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
 
   return (
     <Box flexDirection="column" height={rows} paddingTop={1} paddingX={1}>
-      <Header version={version} view={snapshot.currentView} />
+      <Header version={version} view={snapshot.currentView} status={snapshot.tab} />
       <Box flexDirection="column" flexGrow={1}>
         {snapshot.confirmDeleteJobId !== null ? (
           <ConfirmPrompt

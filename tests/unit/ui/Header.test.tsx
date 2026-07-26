@@ -31,4 +31,18 @@ describe('Header', () => {
     );
     expect(lastFrame()).toContain('Queues > emailQ > job #43');
   });
+
+  it('only lists actions valid for the active job status', () => {
+    const delayed = render(
+      <Header version="1.2.3" view={{ kind: 'jobs', queueName: 'emailQ' }} status="delayed" />,
+    ).lastFrame();
+    expect(delayed).toContain('Promote');
+    expect(delayed).not.toContain('Retry');
+
+    const failed = render(
+      <Header version="1.2.3" view={{ kind: 'jobs', queueName: 'emailQ' }} status="failed" />,
+    ).lastFrame();
+    expect(failed).toContain('Retry');
+    expect(failed).not.toContain('Promote');
+  });
 });

@@ -1,10 +1,12 @@
 import { Box, Text } from 'ink';
 import type { NavigationView } from '../core/store.js';
+import type { JobStatus } from '../core/types.js';
 
 export interface HeaderProps {
   /** App version, taken from package.json at startup (e.g. `0.1.0`). */
   version: string;
   view?: NavigationView;
+  status?: JobStatus;
 }
 
 interface Shortcut {
@@ -23,13 +25,17 @@ function basicShortcutsFor(view: NavigationView | undefined): Shortcut[] {
     : [{ key: 'Esc/h', label: 'Back' }, ...GLOBAL_SHORTCUTS];
 }
 
-function shortcutsFor(view: NavigationView | undefined): Shortcut[] {
+function jobActionShortcuts(status: JobStatus | undefined): Shortcut[] {
+  return [
+    ...(status === 'failed' ? [{ key: 'R', label: 'Retry' }] : []),
+    ...(status !== 'active' ? [{ key: 'D', label: 'Delete' }] : []),
+    ...(status === 'delayed' ? [{ key: 'p', label: 'Promote' }] : []),
+  ];
+}
+
+function shortcutsFor(view: NavigationView | undefined, status: JobStatus | undefined): Shortcut[] {
   if (view?.kind === 'detail') {
-    return [
-      { key: 'R', label: 'Retry' },
-      { key: 'D', label: 'Delete' },
-      { key: 'c', label: 'Copy data' },
-    ];
+    return [...jobActionShortcuts(status), { key: 'c', label: 'Copy data' }];
   }
   if (view?.kind === 'jobs') {
     return [
@@ -38,9 +44,7 @@ function shortcutsFor(view: NavigationView | undefined): Shortcut[] {
       { key: 'b/n', label: 'Page' },
       { key: 'Enter', label: 'Detail' },
       { key: '/', label: 'Filter' },
-      { key: 'R', label: 'Retry' },
-      { key: 'D', label: 'Delete' },
-      { key: 'p', label: 'Promote' },
+      ...jobActionShortcuts(status),
       { key: 'c', label: 'Duplicate' },
     ];
   }
@@ -58,9 +62,11 @@ function ShortcutSection({ shortcuts, color }: { shortcuts: Shortcut[]; color: s
       <Box flexWrap="wrap">
         {shortcuts.map((shortcut) => (
           <Box key={shortcut.key} width={24}>
-            <Text inverse color={color}>
-              {` ${shortcut.key} `}
-            </Text>
+            <Box width={8}>
+              <Text inverse color={color}>
+                {` ${shortcut.key} `}
+              </Text>
+            </Box>
             <Text dimColor> {shortcut.label}</Text>
           </Box>
         ))}
@@ -69,12 +75,18 @@ function ShortcutSection({ shortcuts, color }: { shortcuts: Shortcut[]; color: s
   );
 }
 
-function ShortcutLegend({ view }: { view: NavigationView | undefined }) {
+function ShortcutLegend({
+  view,
+  status,
+}: {
+  view: NavigationView | undefined;
+  status: JobStatus | undefined;
+}) {
   return (
     <Box flexDirection="column" marginTop={1}>
       <ShortcutSection shortcuts={basicShortcutsFor(view)} color="yellow" />
       <Box marginTop={1}>
-        <ShortcutSection shortcuts={shortcutsFor(view)} color="cyan" />
+        <ShortcutSection shortcuts={shortcutsFor(view, status)} color="cyan" />
       </Box>
     </Box>
   );
@@ -86,7 +98,7 @@ function ShortcutLegend({ view }: { view: NavigationView | undefined }) {
  * lone bottom border, so it's a single-style box with the other three sides
  * switched off — leaving just the horizontal line under the title.
  */
-export function Header({ version, view }: HeaderProps) {
+export function Header({ version, view, status }: HeaderProps) {
   const breadcrumbs =
     view?.kind === 'jobs'
       ? ['Queues', view.queueName]
@@ -105,7 +117,7 @@ export function Header({ version, view }: HeaderProps) {
           </Text>
         ))}
       </Box>
-      <ShortcutLegend view={view} />
+      <ShortcutLegend view={view} status={status} />
     </Box>
   );
 }
