@@ -21,6 +21,8 @@ bull-cli [options]
 Options:
   --redis <url>      Redis connection URL (overrides REDIS_URL env var)
   --prefix <prefix>  BullMQ key prefix (overrides BULLMQ_PREFIX env var)
+  --output <format>  Output mode (supported: json)
+  --queue <name>     Queue filter for --output=json
   -h, --help         Show help
   -v, --version      Show version
 ```
@@ -51,10 +53,40 @@ bull-cli
 bull-cli --redis redis://localhost:6379
 REDIS_URL=redis://:secret@redis.internal:6379 bull-cli
 bull-cli --prefix myapp
+bull-cli --output=json
+bull-cli --output=json --queue=email
 ```
 
 `bull-cli` requires an interactive terminal (TTY) — it refuses to start when stdin isn't a TTY
-(e.g. piped input or a non-interactive CI shell).
+(e.g. piped input or a non-interactive CI shell), unless `--output=json` is used.
+
+### JSON output mode
+
+`--output=json` skips the dashboard and prints queue data as JSON to stdout:
+
+```json
+{
+  "queues": [
+    {
+      "name": "email",
+      "isPaused": false,
+      "counts": {
+        "active": 0,
+        "waiting": 3,
+        "completed": 10,
+        "failed": 1,
+        "delayed": 0
+      }
+    }
+  ]
+}
+```
+
+Notes:
+
+- `--queue=<name>` filters output to a single queue.
+- `--queue` requires `--output=json`.
+- Unknown queue names return an error and exit with status `1`.
 
 It runs fullscreen, in the terminal's alternate screen buffer (like vim or htop); quitting —
 `q`, `Ctrl+C`, or a `kill` — restores the shell exactly as it was, with no dashboard frames left
