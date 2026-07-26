@@ -21,9 +21,14 @@ describe('Tabs styling', () => {
 
     // Inverse+bold spans the whole active cell (marker + count slot) as one
     // styled run, with no reset code in between — proves they share one <Text>.
-    const activeCellMatch = frame.match(/\x1b\[7m\x1b\[1m(\[Active\].*?\))\x1b\[22m\x1b\[27m/);
+    const ansiEscape = '\u001b';
+    const activeCellMatch = frame.match(
+      new RegExp(
+        `${ansiEscape}\\[7m${ansiEscape}\\[1m(\\[Active\\].*?\\))${ansiEscape}\\[22m${ansiEscape}\\[27m`,
+      ),
+    );
     expect(activeCellMatch).not.toBeNull();
-    expect(activeCellMatch?.[1]).not.toMatch(/\x1b/);
+    expect(activeCellMatch?.[1]).not.toContain(ansiEscape);
 
     // Inactive cells carry no inverse (7m) style codes.
     // After the active cell closes, " Failed" appears without \x1b[7m prefix.

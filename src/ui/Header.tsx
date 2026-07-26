@@ -62,7 +62,7 @@ function ShortcutSection({ shortcuts, color }: { shortcuts: Shortcut[]; color: s
       <Box flexWrap="wrap">
         {shortcuts.map((shortcut) => (
           <Box key={shortcut.key} width={24}>
-            <Box width={8}>
+            <Box width={7}>
               <Text inverse color={color}>
                 {` ${shortcut.key} `}
               </Text>
