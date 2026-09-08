@@ -122,7 +122,7 @@ A missing file is perfectly fine and just falls back to defaults.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ bull-cli - v0.1.0   Queues > emailQ                                      │
+│ bull-cli v0.1.0                                                          │
 │ [Esc/h] Back    [r] Refresh    [q] Quit                                  │
 │                                                                          │
 │ [↑/↓] Move      [1-5] Status    [Enter] Detail    [/] Filter             │

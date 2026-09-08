@@ -5,7 +5,7 @@ import { Header } from '../../../src/ui/Header.js';
 describe('Header', () => {
   it('shows the app name and version', () => {
     const { lastFrame } = render(<Header version="1.2.3" />);
-    expect(lastFrame()).toContain('bull-cli - v1.2.3');
+    expect(lastFrame()).toContain('bull-cli v1.2.3');
   });
 
   it('draws a bottom rule to separate it from the rest of the screen', () => {
@@ -25,11 +25,17 @@ describe('Header', () => {
     expect(lastFrame()).toContain('Refresh');
   });
 
-  it('renders a breadcrumb for nested navigation', () => {
+  it('is app chrome only: never reports where you are', () => {
+    // Location lives in the body (`Jobs — emailQ`, and the job detail view's own
+    // `name #id` / `Queue:` rows), so the title bar must not repeat it.
     const { lastFrame } = render(
       <Header version="1.2.3" view={{ kind: 'detail', queueName: 'emailQ', jobId: '43' }} />,
     );
-    expect(lastFrame()).toContain('Queues > emailQ > job #43');
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('bull-cli v1.2.3');
+    expect(frame).not.toContain('emailQ');
+    expect(frame).not.toContain('#43');
+    expect(frame).not.toContain('Queues');
   });
 
   it('only lists actions valid for the active job status', () => {

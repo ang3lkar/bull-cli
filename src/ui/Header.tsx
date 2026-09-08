@@ -124,29 +124,22 @@ function ShortcutLegend({
 }
 
 /**
- * Top title bar: the app name and version (`bull-cli - v0.1.0`), with a
- * bottom rule separating it from the rest of the screen. Ink can't draw a
- * lone bottom border, so it's a single-style box with the other three sides
- * switched off — leaving just the horizontal line under the title.
+ * Title bar (`bull-cli v0.1.0`) plus the legend, with a rule between them.
+ *
+ * The title bar is app chrome and deliberately says nothing about where you
+ * are: every view already carries its own location — `Queues`, `Jobs — emailQ`,
+ * and the job detail view's `name #id` / `Queue:` rows — so a breadcrumb here
+ * would only repeat what's on screen a few rows below (see `CONTEXT.md`).
+ *
+ * Ink can't draw a lone bottom border, so the rule is a single-style box with
+ * the other three sides switched off — leaving just the horizontal line.
  */
 export function Header({ version, view, status, width }: HeaderProps) {
-  const breadcrumbs =
-    view?.kind === 'jobs'
-      ? ['Queues', view.queueName]
-      : view?.kind === 'detail'
-        ? ['Queues', view.queueName, `job #${view.jobId}`]
-        : ['Queues'];
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box borderStyle="single" borderTop={false} borderLeft={false} borderRight={false}>
         <Text bold>bull-cli</Text>
-        <Text dimColor> - v{version} </Text>
-        {breadcrumbs.map((crumb, index) => (
-          <Text key={crumb}>
-            {index > 0 && <Text dimColor> &gt; </Text>}
-            <Text color={index === breadcrumbs.length - 1 ? 'cyan' : undefined}>{crumb}</Text>
-          </Text>
-        ))}
+        <Text dimColor> v{version}</Text>
       </Box>
       <ShortcutLegend view={view} status={status} width={width} />
     </Box>
