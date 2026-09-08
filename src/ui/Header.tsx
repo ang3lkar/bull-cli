@@ -16,6 +16,11 @@ interface Shortcut {
   label: string;
 }
 
+/**
+ * Cap on rows per contextual column — and, because no column can exceed it,
+ * the legend's tallest possible height. The legend reserves exactly this many
+ * rows in every view (see `ShortcutLegend`).
+ */
 const MAX_CONTEXTUAL_ROWS = 5;
 
 const GLOBAL_SHORTCUTS: Shortcut[] = [
@@ -98,8 +103,13 @@ function ShortcutLegend({
   const contextualWidth = 20;
   const contextualColumns = shortcutColumns(shortcutsFor(view, status));
 
+  // `minHeight`, not `height`: the legend reserves its full height so the
+  // breadcrumb and every table below it stay on a fixed row as you navigate
+  // (the tallest column is 4 rows in the queue list, 5 in the job list and as
+  // few as 1 in job detail), while still being free to grow if a narrow
+  // terminal ever wraps a cell rather than clipping it.
   return (
-    <Box flexDirection="row" marginTop={1} width={width}>
+    <Box flexDirection="row" marginTop={1} width={width} minHeight={MAX_CONTEXTUAL_ROWS}>
       <Box flexDirection="column" width={basicWidth} marginRight={1}>
         {basicShortcutsFor(view).map((shortcut) => (
           <ShortcutCell key={shortcut.key} shortcut={shortcut} color="yellow" width={basicWidth} />

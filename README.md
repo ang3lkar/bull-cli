@@ -148,7 +148,8 @@ A missing file is perfectly fine and just falls back to defaults.
 - **Title bar** — the app's identity (`bull-cli v0.1.0`) and nothing else; the breadcrumb reports
   location, so the title bar never repeats it.
 - **Legend** — a k9s-style shortcut grid separating always-available keys (yellow) from
-  view-contextual ones (cyan).
+  view-contextual ones (cyan). It reserves a fixed height, so the breadcrumb and everything
+  below it stay on the same row as you navigate.
 - **Breadcrumb** — the current location above the body content, one crumb per level of the
   navigation stack: `Queues`, `Queues > emailQ`, `Queues > emailQ > job #43`.
 - **Status bar** — a compact Redis URL (password masked) and last-refresh timestamp.
