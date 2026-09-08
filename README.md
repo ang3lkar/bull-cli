@@ -145,8 +145,10 @@ A missing file is perfectly fine and just falls back to defaults.
   column expands to fill the terminal. The status header provides counts and selection feedback.
 - **Job detail** — queue and job metadata, pretty-printed data, return value, stacktrace, and
   options.
-- **Header** — breadcrumbs identify the active location (`Queues > emailQ > job #43`) and a
-  k9s-style shortcut grid separates basic shortcuts (yellow) from contextual ones (cyan).
+- **Title bar** — the app's identity (`bull-cli v0.1.0`) and nothing else. Each view reports its
+  own location, so the title bar never repeats it.
+- **Legend** — a k9s-style shortcut grid separating always-available keys (yellow) from
+  view-contextual ones (cyan).
 - **Status bar** — a compact Redis URL (password masked) and last-refresh timestamp.
 
 Only one view is visible at a time. `Enter` drills into the selected row; `Escape` or `h` returns to

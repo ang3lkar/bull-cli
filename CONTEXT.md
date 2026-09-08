@@ -7,8 +7,8 @@ and what a user actually sees.
 ## Language
 
 **Title bar**:
-The top row of the screen, holding the app's identity (`bull-cli v0.1.0`) and nothing else,
-with a full-width rule beneath it. It is app chrome: it never reports where you are.
+The top row of the screen, holding the app's identity (`bull-cli v0.1.0`) and nothing else.
+It is app chrome: it never reports where you are.
 _Avoid_: Header (that's the title bar and the legend together), breadcrumb bar, top bar
 
 **Legend**:
