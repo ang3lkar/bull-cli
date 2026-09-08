@@ -22,8 +22,8 @@ describe('Sidebar', () => {
     const lines = (lastFrame() ?? '').split('\n');
     const smsLine = lines.find((l) => l.includes('smsQ'));
     const emailLine = lines.find((l) => l.includes('emailQ'));
-    expect(smsLine).toContain('⏸');
-    expect(emailLine).not.toContain('⏸');
+    expect(smsLine).toContain('(paused)');
+    expect(emailLine).not.toContain('(paused)');
   });
 
   it('marks the selected row with the focused marker when focused', () => {

@@ -140,7 +140,7 @@ A missing file is perfectly fine and just falls back to defaults.
 ```
 
 - **Queue list** — a full-width list with the queue name and lifecycle counters in order:
-  delayed, waiting, active, failed, completed. Paused queues carry a `⏸` marker.
+  delayed, waiting, active, failed, completed. Paused queues carry a `(paused)` marker.
 - **Job list** — a full-width `ID`, `Name`, `State`, `Attempts`, `CreatedAt` table. The name
   column expands to fill the terminal. The status header provides counts and selection feedback.
 - **Job detail** — queue and job metadata, pretty-printed data, return value, stacktrace, and

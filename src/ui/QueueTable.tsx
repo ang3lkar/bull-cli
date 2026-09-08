@@ -77,7 +77,7 @@ export function QueueTable({ queues, counts, selectedName, width }: QueueTablePr
             <Box width={nameWidth + 2}>
               <Text inverse={selected} bold={selected}>
                 {selected ? '❯ ' : '  '}
-                {truncate(`${queue.name}${queue.isPaused ? ' ⏸' : ''}`, nameWidth)}
+                {truncate(`${queue.name}${queue.isPaused ? ' (paused)' : ''}`, nameWidth)}
               </Text>
             </Box>
             <Count value={queueCounts?.delayed ?? 0} color="yellow" selected={selected} />

@@ -23,7 +23,7 @@ function selectionMarker(isSelected: boolean, focused: boolean): string {
   return focused ? '❯ ' : '· ';
 }
 
-/** Sorted queue list with paused (`⏸`) and selection/focus indicators. Purely presentational — sorting is the store's job. */
+/** Sorted queue list with a `(paused)` label and selection/focus indicators. Purely presentational — sorting is the store's job. */
 export function Sidebar({ queues, selectedName, focused }: SidebarProps) {
   if (queues.length === 0) {
     return (
@@ -38,7 +38,7 @@ export function Sidebar({ queues, selectedName, focused }: SidebarProps) {
       {queues.map((queue) => {
         const isSelected = queue.name === selectedName;
         const marker = selectionMarker(isSelected, focused);
-        const label = `${marker}${queue.name}${queue.isPaused ? ' ⏸' : ''}`;
+        const label = `${marker}${queue.name}${queue.isPaused ? ' (paused)' : ''}`;
         return (
           <Text key={queue.name} inverse={isSelected && focused} bold={isSelected}>
             {label}

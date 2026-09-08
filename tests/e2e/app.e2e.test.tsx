@@ -78,7 +78,7 @@ describe('Browse: queue list and job list', () => {
     // Alphabetical order: "alpha" renders before "beta" in the queue table.
     expect(frame.indexOf('alpha')).toBeLessThan(frame.indexOf('beta'));
     // Paused indicator next to beta.
-    expect(frame).toContain('beta ⏸');
+    expect(frame).toContain('beta (paused)');
     expect(frame).toContain('Waiting');
     expect(frame).toContain('❯ alpha');
 
@@ -181,11 +181,11 @@ describe('Action verified in Redis: pause', () => {
 
     mounted = await mountApp(REDIS_URL);
     await waitForFrame(mounted.lastFrame, (f) => f.includes('pauseQ'));
-    expect(mounted.lastFrame() ?? '').not.toContain('pauseQ ⏸');
+    expect(mounted.lastFrame() ?? '').not.toContain('pauseQ (paused)');
 
     // Sidebar is focused by default; the only queue is auto-selected.
-    const frame = await pressAndWaitForFrame(mounted, 'p', (f) => f.includes('pauseQ ⏸'));
-    expect(frame).toContain('pauseQ ⏸');
+    const frame = await pressAndWaitForFrame(mounted, 'p', (f) => f.includes('pauseQ (paused)'));
+    expect(frame).toContain('pauseQ (paused)');
 
     const verifyQueue = trackedQueue('pauseQ');
     await expect(verifyQueue.isPaused()).resolves.toBe(true);
