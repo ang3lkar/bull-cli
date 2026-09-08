@@ -145,7 +145,11 @@ function ShortcutLegend({
  */
 export function Header({ version, view, status, width }: HeaderProps) {
   return (
-    <Box flexDirection="column" marginBottom={1}>
+    // `flexShrink={0}`: Ink boxes shrink by default, so once the view below is
+    // taller than the terminal, Yoga takes the missing rows out of the header —
+    // collapsing the title bar until its bottom rule renders on top of the app
+    // name. Chrome keeps its height; the job table absorbs the overflow.
+    <Box flexDirection="column" marginBottom={1} flexShrink={0}>
       <Box borderStyle="single" borderTop={false} borderLeft={false} borderRight={false}>
         <Text bold>bull-cli</Text>
         <Text dimColor> v{version}</Text>

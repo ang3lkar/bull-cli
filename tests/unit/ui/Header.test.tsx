@@ -1,3 +1,4 @@
+import { Box, Text } from 'ink';
 import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
 import { Header } from '../../../src/ui/Header.js';
@@ -49,6 +50,26 @@ describe('Header', () => {
     ).lastFrame();
     expect(failed).toContain('Retry');
     expect(failed).not.toContain('Promote');
+  });
+
+  it('does not collapse when the content below it overflows the terminal', () => {
+    // Yoga shrinks flexible children once content exceeds the terminal height,
+    // and Ink boxes shrink by default — left alone, the title bar loses its
+    // height and the bottom rule renders on top of the app name. Overflow has
+    // to come out of the job table instead.
+    const { lastFrame } = render(
+      <Box flexDirection="column" height={10}>
+        <Header version="1.2.3" view={{ kind: 'jobs', queueName: 'emailQ' }} width={78} />
+        <Box flexDirection="column" flexGrow={1}>
+          {'abcdefghijklmnopqrst'.split('').map((row) => (
+            <Text key={row}>{row}</Text>
+          ))}
+        </Box>
+      </Box>,
+    );
+    const ruleLine = (lastFrame() ?? '').split('\n').find((line) => line.includes('───'));
+    expect(ruleLine).toBeDefined();
+    expect(ruleLine).not.toContain('bull-cli');
   });
 
   it('is the same height in every view, so nothing below it moves', () => {
