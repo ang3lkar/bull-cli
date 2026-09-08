@@ -4,7 +4,6 @@ import {
   formatClock,
   maskRedisUrl,
   normalizeProgress,
-  relativeTime,
 } from '../../src/core/format.js';
 
 describe('normalizeProgress', () => {
@@ -89,42 +88,6 @@ describe('displayTimestamp', () => {
     'delayed',
   ] as const)('%s: falls back to 0 when timestamp is absent', (status) => {
     expect(displayTimestamp({}, status)).toBe(0);
-  });
-});
-
-describe('relativeTime', () => {
-  const now = 1_000_000;
-
-  it('renders seconds just under the minute boundary', () => {
-    expect(relativeTime(now - 59_000, now)).toBe('59s ago');
-  });
-
-  it('renders 1m at exactly 60 seconds', () => {
-    expect(relativeTime(now - 60_000, now)).toBe('1m ago');
-  });
-
-  it('renders minutes just under the hour boundary', () => {
-    expect(relativeTime(now - 59 * 60_000, now)).toBe('59m ago');
-  });
-
-  it('renders 1h at exactly 60 minutes', () => {
-    expect(relativeTime(now - 60 * 60_000, now)).toBe('1h ago');
-  });
-
-  it('renders hours just under the day boundary', () => {
-    expect(relativeTime(now - 23 * 3_600_000, now)).toBe('23h ago');
-  });
-
-  it('renders 1d at exactly 24 hours', () => {
-    expect(relativeTime(now - 24 * 3_600_000, now)).toBe('1d ago');
-  });
-
-  it('renders 0s ago for the same instant', () => {
-    expect(relativeTime(now, now)).toBe('0s ago');
-  });
-
-  it('clamps a future fromMs (clock skew) to 0s ago', () => {
-    expect(relativeTime(now + 5000, now)).toBe('0s ago');
   });
 });
 

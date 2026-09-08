@@ -67,10 +67,9 @@ export async function mountApp(redisUrl: string, prefix = 'bull'): Promise<Mount
 /**
  * Unmounts the ink instance and stops the app (polling timer, cached
  * `Queue`s, ioredis connection). Both steps are required to avoid hanging
- * the process: `unmount()` alone leaves `App`'s internal 1s "Last updated"
- * clock (`useNow`) running via `setInterval`; `app.stop()` alone leaves the
- * store's poll timer and Redis connection alive. Safe to call with
- * `undefined` (e.g. a scenario that never finished mounting).
+ * the process: `app.stop()` alone leaves ink mounted, and `unmount()` alone
+ * leaves the store's poll timer and Redis connection alive. Safe to call
+ * with `undefined` (e.g. a scenario that never finished mounting).
  */
 export async function unmountApp(mounted: MountedApp | undefined): Promise<void> {
   if (!mounted) {

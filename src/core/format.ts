@@ -3,11 +3,6 @@ import type { JobStatus } from './types.js';
 const MIN_PROGRESS = 0;
 const MAX_PROGRESS = 100;
 
-const SECOND_MS = 1000;
-const MINUTE_MS = 60 * SECOND_MS;
-const HOUR_MS = 60 * MINUTE_MS;
-const DAY_MS = 24 * HOUR_MS;
-
 /**
  * Normalizes a job's raw `progress` value for display: a finite number is
  * clamped to 0-100; anything else (an object, a string, `undefined`, `NaN`)
@@ -37,25 +32,6 @@ export function displayTimestamp(
     return job.finishedOn ?? job.processedOn ?? job.timestamp ?? 0;
   }
   return job.timestamp ?? 0;
-}
-
-/**
- * Compact "time ago" string used by the footer and job rows. Negative
- * differences (clock skew, `fromMs` in the future) are clamped to 0s ago.
- */
-export function relativeTime(fromMs: number, nowMs: number): string {
-  const diffMs = Math.max(0, nowMs - fromMs);
-
-  if (diffMs < MINUTE_MS) {
-    return `${Math.floor(diffMs / SECOND_MS)}s ago`;
-  }
-  if (diffMs < HOUR_MS) {
-    return `${Math.floor(diffMs / MINUTE_MS)}m ago`;
-  }
-  if (diffMs < DAY_MS) {
-    return `${Math.floor(diffMs / HOUR_MS)}h ago`;
-  }
-  return `${Math.floor(diffMs / DAY_MS)}d ago`;
 }
 
 function pad2(value: number): string {

@@ -1,5 +1,4 @@
 import { Box, Text } from 'ink';
-import { useEffect, useState } from 'react';
 import type { DashboardStore } from '../core/store.js';
 import { Breadcrumb } from './Breadcrumb.js';
 import { ConfirmPrompt } from './ConfirmPrompt.js';
@@ -24,24 +23,6 @@ export interface AppProps {
   version?: string;
 }
 
-/** How often the footer's "Last updated: Ns ago" counter re-renders. */
-const NOW_TICK_MS = 1000;
-
-/**
- * Ticking clock local to the UI layer (NOT the store — the plan is explicit
- * that this stays out of `DashboardStore`, which only tracks `lastUpdatedAt`
- * as a fixed point in time). Re-renders every `intervalMs` so `relativeTime`
- * output in the footer visibly counts up between refreshes.
- */
-function useNow(intervalMs: number): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(id);
-  }, [intervalMs]);
-  return now;
-}
-
 /**
  * Top-level app component: wires the `DashboardStore` to the presentational
  * components and single keyboard dispatcher from `useKeymap`. Only the
@@ -50,7 +31,6 @@ function useNow(intervalMs: number): number {
  */
 export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
   const snapshot = useStore(store);
-  const now = useNow(NOW_TICK_MS);
   useKeymap(store, snapshot, onQuit);
   // `rows` is the real terminal height once running in the alt-screen buffer
   // (see `src/terminal.ts`), and `undefined` under ink-testing-library
@@ -88,7 +68,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
         <Box flexGrow={1}>
           <EmptyState url={snapshot.redisUrl} />
         </Box>
-        <Footer redisUrl={snapshot.redisUrl} lastUpdatedAt={snapshot.lastUpdatedAt} now={now} />
+        <Footer redisUrl={snapshot.redisUrl} />
       </Box>
     );
   }
@@ -161,7 +141,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
         )}
       </Box>
       <Toast toasts={snapshot.toasts} />
-      <Footer redisUrl={snapshot.redisUrl} lastUpdatedAt={snapshot.lastUpdatedAt} now={now} />
+      <Footer redisUrl={snapshot.redisUrl} />
     </Box>
   );
 }

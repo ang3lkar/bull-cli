@@ -95,9 +95,8 @@ describe('Browse: queue list and job list', () => {
     expect(frame).toContain('alpha-job-0');
     expect(frame).toContain('Page 1 of 1');
 
-    // Footer: URL (no auth on this URL, so it's shown verbatim) + ticking clock.
+    // Footer: URL only (no auth on this URL, so it's shown verbatim).
     expect(frame).toContain(REDIS_URL);
-    expect(frame).toContain('Last updated:');
   });
 });
 

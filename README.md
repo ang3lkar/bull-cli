@@ -135,7 +135,7 @@ A missing file is perfectly fine and just falls back to defaults.
 │    ...                                                                   │
 │                                                                          │
 │                                                          Page 1 of 2      │
-│ redis://localhost:6379                            Last updated: 2s ago  │
+│ redis://localhost:6379                                                  │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -152,7 +152,7 @@ A missing file is perfectly fine and just falls back to defaults.
   below it stay on the same row as you navigate.
 - **Breadcrumb** — the current location above the body content, one crumb per level of the
   navigation stack: `Queues`, `Queues > emailQ`, `Queues > emailQ > job #43`.
-- **Status bar** — a compact Redis URL (password masked) and last-refresh timestamp.
+- **Status bar** — a compact Redis URL, with any password masked.
 
 Only one view is visible at a time. `Enter` drills into the selected row; `Escape` or `h` returns to
 the previous screen. Opening a queue starts on the **Delayed** status; use the status shortcuts to
