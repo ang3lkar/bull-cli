@@ -16,7 +16,7 @@ interface Shortcut {
   label: string;
 }
 
-const MAX_CONTEXTUAL_ROWS = 10;
+const MAX_CONTEXTUAL_ROWS = 5;
 
 const GLOBAL_SHORTCUTS: Shortcut[] = [
   { key: 'r', label: 'Refresh' },
