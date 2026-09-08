@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink';
 import { useEffect, useState } from 'react';
 import type { DashboardStore } from '../core/store.js';
+import { Breadcrumb } from './Breadcrumb.js';
 import { ConfirmPrompt } from './ConfirmPrompt.js';
 import { EmptyState } from './EmptyState.js';
 import { ErrorScreen } from './ErrorScreen.js';
@@ -115,7 +116,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
           />
         ) : snapshot.currentView.kind === 'queues' ? (
           <>
-            <Text bold>Queues</Text>
+            <Breadcrumb view={snapshot.currentView} />
             <Box marginTop={1}>
               <QueueTable
                 queues={snapshot.queues}
@@ -127,9 +128,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
           </>
         ) : snapshot.currentView.kind === 'jobs' ? (
           <>
-            <Text bold>
-              Jobs <Text dimColor>— {snapshot.currentView.queueName}</Text>
-            </Text>
+            <Breadcrumb view={snapshot.currentView} />
             <Box marginTop={1}>
               <Tabs active={snapshot.tab} counts={snapshot.tabCounts} />
             </Box>
@@ -150,10 +149,15 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
               />
             </Box>
           </>
-        ) : snapshot.detailLoading || snapshot.detail === null ? (
-          <Text dimColor>Loading job detail…</Text>
         ) : (
-          <JobDetailView detail={snapshot.detail} queueName={snapshot.currentView.queueName} />
+          <>
+            <Breadcrumb view={snapshot.currentView} />
+            {snapshot.detailLoading || snapshot.detail === null ? (
+              <Text dimColor>Loading job detail…</Text>
+            ) : (
+              <JobDetailView detail={snapshot.detail} queueName={snapshot.currentView.queueName} />
+            )}
+          </>
         )}
       </Box>
       <Toast toasts={snapshot.toasts} />

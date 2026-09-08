@@ -82,7 +82,7 @@ describe('Browse: queue list and job list', () => {
     expect(frame).toContain('Waiting');
     expect(frame).toContain('❯ alpha');
 
-    frame = await pressAndWaitForFrame(mounted, KEY.enter, (f) => f.includes('Jobs — alpha'));
+    frame = await pressAndWaitForFrame(mounted, KEY.enter, (f) => f.includes('Queues > alpha'));
     frame = await pressAndWaitForFrame(
       mounted,
       '2',
@@ -116,7 +116,7 @@ describe('Detail view', () => {
     mounted = await mountApp(REDIS_URL);
     await waitForFrame(mounted.lastFrame, (f) => f.includes(queueName));
 
-    await pressAndWaitForFrame(mounted, KEY.enter, (f) => f.includes(`Jobs — ${queueName}`));
+    await pressAndWaitForFrame(mounted, KEY.enter, (f) => f.includes(`Queues > ${queueName}`));
     let frame = await pressAndWaitForFrame(
       mounted,
       '5',
@@ -143,7 +143,7 @@ describe('Action verified in Redis: delete', () => {
     mounted = await mountApp(REDIS_URL);
     await waitForFrame(mounted.lastFrame, (f) => f.includes('deleteQ'));
 
-    await pressAndWaitForFrame(mounted, KEY.enter, (f) => f.includes('Jobs — deleteQ'));
+    await pressAndWaitForFrame(mounted, KEY.enter, (f) => f.includes('Queues > deleteQ'));
     await pressAndWaitForFrame(mounted, '2', (f) => f.includes('waiting') && f.includes('wjob-1'));
 
     const snapshotBeforeDelete = await waitForSnapshot(
@@ -220,7 +220,7 @@ describe('Colon-named queue does not brick the dashboard', () => {
     // Arrow-down moves off the broken queue to the normal one, which shows
     // its real waiting job after drilling in — proving navigation survives.
     frame = await pressAndWaitForFrame(mounted, KEY.down, (f) => f.includes('❯ zzzQ'));
-    frame = await pressAndWaitForFrame(mounted, KEY.enter, (f) => f.includes('Jobs — zzzQ'));
+    frame = await pressAndWaitForFrame(mounted, KEY.enter, (f) => f.includes('Queues > zzzQ'));
     frame = await pressAndWaitForFrame(
       mounted,
       '2',
@@ -260,7 +260,7 @@ describe('Live refresh', () => {
     mounted = await mountApp(REDIS_URL);
     await waitForFrame(mounted.lastFrame, (f) => f.includes('liveQ'));
 
-    await pressAndWaitForFrame(mounted, KEY.enter, (f) => f.includes('Jobs — liveQ'));
+    await pressAndWaitForFrame(mounted, KEY.enter, (f) => f.includes('Queues > liveQ'));
     let frame = await pressAndWaitForFrame(
       mounted,
       '2',

@@ -26,8 +26,7 @@ describe('Header', () => {
   });
 
   it('is app chrome only: never reports where you are', () => {
-    // Location lives in the body (`Jobs — emailQ`, and the job detail view's own
-    // `name #id` / `Queue:` rows), so the title bar must not repeat it.
+    // Location lives in the body's `Breadcrumb`, so the title bar must not repeat it.
     const { lastFrame } = render(
       <Header version="1.2.3" view={{ kind: 'detail', queueName: 'emailQ', jobId: '43' }} />,
     );

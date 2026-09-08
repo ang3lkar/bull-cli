@@ -127,9 +127,8 @@ function ShortcutLegend({
  * Title bar (`bull-cli v0.1.0`) plus the legend, with a rule between them.
  *
  * The title bar is app chrome and deliberately says nothing about where you
- * are: every view already carries its own location — `Queues`, `Jobs — emailQ`,
- * and the job detail view's `name #id` / `Queue:` rows — so a breadcrumb here
- * would only repeat what's on screen a few rows below (see `CONTEXT.md`).
+ * are — that's the `Breadcrumb`'s job, rendered with the body content a few
+ * rows below (see `CONTEXT.md`).
  *
  * Ink can't draw a lone bottom border, so the rule is a single-style box with
  * the other three sides switched off — leaving just the horizontal line.

@@ -11,6 +11,11 @@ The top row of the screen, holding the app's identity (`bull-cli v0.1.0`) and no
 It is app chrome: it never reports where you are.
 _Avoid_: Header (that's the title bar and the legend together), breadcrumb bar, top bar
 
+**Breadcrumb**:
+The line above the body content naming the current location, one crumb per level of the
+navigation stack: `Queues`, `Queues > emailQ`, `Queues > emailQ > job #43`.
+_Avoid_: Title, header path, location bar
+
 **Legend**:
 The grid of `<key> Action` pairs below the title bar, listing the keys available in the current
 view. Split into always-available keys and view-contextual ones.

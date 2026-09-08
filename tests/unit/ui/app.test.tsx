@@ -120,8 +120,7 @@ describe('App: stack navigation', () => {
     expect(store.getSnapshot().currentView).toEqual({ kind: 'jobs', queueName: 'emailQ' });
     expect(store.getSnapshot().tab).toBe('delayed');
     expect(lastFrame()).toContain('[Delayed]');
-    expect(lastFrame()).toContain('Jobs');
-    expect(lastFrame()).toContain('emailQ');
+    expect(lastFrame()).toContain('Queues > emailQ');
     expect(lastFrame()).not.toContain('smsQ');
   });
 

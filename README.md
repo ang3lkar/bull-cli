@@ -127,7 +127,7 @@ A missing file is perfectly fine and just falls back to defaults.
 │                                                                          │
 │ [↑/↓] Move      [1-5] Status    [Enter] Detail    [/] Filter             │
 │                                                                          │
-│ Jobs — emailQ                                                           │
+│ Queues > emailQ                                                         │
 │ [Delayed](0) | Waiting (12) | Active (2) | Failed (1) | Completed (4)  │
 │                                                                          │
 │    ID          Name                 State     Attempts  CreatedAt        │
@@ -145,10 +145,12 @@ A missing file is perfectly fine and just falls back to defaults.
   column expands to fill the terminal. The status header provides counts and selection feedback.
 - **Job detail** — queue and job metadata, pretty-printed data, return value, stacktrace, and
   options.
-- **Title bar** — the app's identity (`bull-cli v0.1.0`) and nothing else. Each view reports its
-  own location, so the title bar never repeats it.
+- **Title bar** — the app's identity (`bull-cli v0.1.0`) and nothing else; the breadcrumb reports
+  location, so the title bar never repeats it.
 - **Legend** — a k9s-style shortcut grid separating always-available keys (yellow) from
   view-contextual ones (cyan).
+- **Breadcrumb** — the current location above the body content, one crumb per level of the
+  navigation stack: `Queues`, `Queues > emailQ`, `Queues > emailQ > job #43`.
 - **Status bar** — a compact Redis URL (password masked) and last-refresh timestamp.
 
 Only one view is visible at a time. `Enter` drills into the selected row; `Escape` or `h` returns to
