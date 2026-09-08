@@ -140,3 +140,19 @@ When the pipeline is explicitly requested:
 Give each subagent a self-contained prompt — they have no memory of prior
 sessions. Resume a subagent that got cut off via its agent handle rather than
 relaunching it from scratch.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in the `ang3lkar/bull-cli` GitHub Issues, managed with the `gh` CLI. See
+`docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles, using the default label strings. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` plus `docs/adr/` at the repo root. See `docs/agents/domain.md`.
