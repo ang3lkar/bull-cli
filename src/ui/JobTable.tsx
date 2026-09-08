@@ -158,7 +158,15 @@ export function JobTable({
 }: JobTableProps) {
   return (
     <Box flexDirection="column">
-      <Text bold>{headerLine(width)}</Text>
+      {/*
+        `flexShrink={0}`: when the view is taller than the terminal the overflow
+        is pushed into this table (see `Header`), and Yoga would otherwise clip
+        from the top — taking the column labels first and leaving unlabelled
+        rows. Losing a job row is the better trade; the rest stays paginated.
+      */}
+      <Box flexShrink={0}>
+        <Text bold>{headerLine(width)}</Text>
+      </Box>
       {jobs.length === 0 ? (
         <EmptyJobs status={status} counts={counts} />
       ) : (

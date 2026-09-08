@@ -1,3 +1,4 @@
+import { Box } from 'ink';
 import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
 import { formatClock } from '../../../src/core/format.js';
@@ -12,6 +13,27 @@ const jobs: JobSummary[] = [
 ];
 
 describe('JobTable', () => {
+  it('keeps the column header when the terminal is too short for every row', () => {
+    // Overflow lands on this table (the header is `flexShrink={0}`), so the
+    // table has to give up a job row rather than the labels that explain the
+    // rows still on screen.
+    const many: JobSummary[] = Array.from({ length: 20 }, (_, index) => ({
+      id: `job-${index}`,
+      name: 'sendEmail',
+      attemptsMade: 0,
+      timestamp: NOW,
+      progress: null,
+    }));
+    const { lastFrame } = render(
+      <Box flexDirection="column" height={6}>
+        <JobTable jobs={many} selectedJobId={null} page={0} pageCount={2} status="active" />
+      </Box>,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('CreatedAt');
+    expect(frame).toContain('Attempts');
+  });
+
   it('shows column headers', () => {
     const { lastFrame } = render(
       <JobTable
