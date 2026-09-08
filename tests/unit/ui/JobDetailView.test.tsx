@@ -2,7 +2,7 @@ import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
 import { formatClock } from '../../../src/core/format.js';
 import type { JobDetail } from '../../../src/core/types.js';
-import { JobDetailModal } from '../../../src/ui/JobDetailModal.js';
+import { JobDetailView } from '../../../src/ui/JobDetailView.js';
 
 const NOW = 1_700_000_000_000;
 
@@ -23,9 +23,9 @@ function baseDetail(overrides: Partial<JobDetail> = {}): JobDetail {
   };
 }
 
-describe('JobDetailModal', () => {
+describe('JobDetailView', () => {
   it('shows the pretty-printed data payload as JSON', () => {
-    const { lastFrame } = render(<JobDetailModal detail={baseDetail()} />);
+    const { lastFrame } = render(<JobDetailView detail={baseDetail()} />);
     const frame = lastFrame() ?? '';
     expect(frame).toContain('"to": "a@b.com"');
     expect(frame).toContain('"subject": "hi"');
@@ -33,7 +33,7 @@ describe('JobDetailModal', () => {
 
   it('shows returnvalue when present', () => {
     const { lastFrame } = render(
-      <JobDetailModal detail={baseDetail({ returnvalue: { ok: true } })} />,
+      <JobDetailView detail={baseDetail({ returnvalue: { ok: true } })} />,
     );
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Return Value');
@@ -41,15 +41,13 @@ describe('JobDetailModal', () => {
   });
 
   it('omits the Return Value section when returnvalue is absent', () => {
-    const { lastFrame } = render(
-      <JobDetailModal detail={baseDetail({ returnvalue: undefined })} />,
-    );
+    const { lastFrame } = render(<JobDetailView detail={baseDetail({ returnvalue: undefined })} />);
     expect(lastFrame()).not.toContain('Return Value');
   });
 
   it('shows stacktrace lines for failed jobs', () => {
     const { lastFrame } = render(
-      <JobDetailModal
+      <JobDetailView
         detail={baseDetail({
           stacktrace: ['Error: boom', '    at worker.js:12:5'],
         })}
@@ -62,13 +60,13 @@ describe('JobDetailModal', () => {
   });
 
   it('omits the Stacktrace section when there is none', () => {
-    const { lastFrame } = render(<JobDetailModal detail={baseDetail({ stacktrace: [] })} />);
+    const { lastFrame } = render(<JobDetailView detail={baseDetail({ stacktrace: [] })} />);
     expect(lastFrame()).not.toContain('Stacktrace');
   });
 
   it('renders — for absent processed/finished timestamps and the formatted clock for created', () => {
     const { lastFrame } = render(
-      <JobDetailModal
+      <JobDetailView
         detail={baseDetail({ timestamps: { created: NOW, processed: null, finished: null } })}
       />,
     );
@@ -81,7 +79,7 @@ describe('JobDetailModal', () => {
     const processed = NOW + 1000;
     const finished = NOW + 2000;
     const { lastFrame } = render(
-      <JobDetailModal detail={baseDetail({ timestamps: { created: NOW, processed, finished } })} />,
+      <JobDetailView detail={baseDetail({ timestamps: { created: NOW, processed, finished } })} />,
     );
     const frame = lastFrame() ?? '';
     expect(frame).toContain(formatClock(processed));
@@ -89,15 +87,13 @@ describe('JobDetailModal', () => {
   });
 
   it('shows a numeric progress percentage', () => {
-    const { lastFrame } = render(<JobDetailModal detail={baseDetail({ progress: 75 })} />);
+    const { lastFrame } = render(<JobDetailView detail={baseDetail({ progress: 75 })} />);
     expect(lastFrame()).toContain('75%');
   });
 
   it('pretty-prints rawProgress when progress is non-numeric', () => {
     const { lastFrame } = render(
-      <JobDetailModal
-        detail={baseDetail({ progress: null, rawProgress: { step: 2, total: 5 } })}
-      />,
+      <JobDetailView detail={baseDetail({ progress: null, rawProgress: { step: 2, total: 5 } })} />,
     );
     const frame = lastFrame() ?? '';
     expect(frame).toContain('"step": 2');
@@ -106,17 +102,17 @@ describe('JobDetailModal', () => {
 
   it('shows a truncation marker for a huge data payload', () => {
     const bigArray = Array.from({ length: 100 }, (_, i) => `line-${i}`);
-    const { lastFrame } = render(<JobDetailModal detail={baseDetail({ data: bigArray })} />);
+    const { lastFrame } = render(<JobDetailView detail={baseDetail({ data: bigArray })} />);
     expect(lastFrame()).toContain('… (truncated)');
   });
 
   it('does not show a truncation marker for a small payload', () => {
-    const { lastFrame } = render(<JobDetailModal detail={baseDetail({ data: { small: true } })} />);
+    const { lastFrame } = render(<JobDetailView detail={baseDetail({ data: { small: true } })} />);
     expect(lastFrame()).not.toContain('truncated');
   });
 
   it('shows attempts and job id/name header', () => {
-    const { lastFrame } = render(<JobDetailModal detail={baseDetail()} />);
+    const { lastFrame } = render(<JobDetailView detail={baseDetail()} />);
     const frame = lastFrame() ?? '';
     expect(frame).toContain('sendEmail');
     expect(frame).toContain('job-1');
@@ -124,7 +120,7 @@ describe('JobDetailModal', () => {
   });
 
   it('pretty-prints opts as JSON', () => {
-    const { lastFrame } = render(<JobDetailModal detail={baseDetail({ opts: { delay: 500 } })} />);
+    const { lastFrame } = render(<JobDetailView detail={baseDetail({ opts: { delay: 500 } })} />);
     expect(lastFrame()).toContain('"delay": 500');
   });
 });

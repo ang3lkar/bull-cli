@@ -1235,8 +1235,8 @@ describe('DashboardStore: connection', () => {
   });
 });
 
-describe('DashboardStore: detail modal', () => {
-  it('opens the detail modal for the selected job', async () => {
+describe('DashboardStore: detail view', () => {
+  it('opens the detail view for the selected job', async () => {
     const detail: JobDetail = {
       id: '1',
       name: 'j1',

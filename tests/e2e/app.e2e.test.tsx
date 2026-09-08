@@ -101,7 +101,7 @@ describe('Browse: queue list and job list', () => {
   });
 });
 
-describe('Detail modal', () => {
+describe('Detail view', () => {
   it('shows pretty-printed data + returnvalue for a completed job; Escape closes it', async () => {
     const queueName = 'detailQ';
     const completedSeed = await makeCompleted(queueName, CONNECTION, 1, {

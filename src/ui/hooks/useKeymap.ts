@@ -27,7 +27,7 @@ const TAB_ORDER: JobStatus[] = ['delayed', 'waiting', 'active', 'failed', 'compl
  *   a filter, hit Enter to get the input out of the way, and keep browsing
  *   without the query being wiped out immediately after.
  * - **Global `Escape`** (reached only when nothing above claims it — no
- *   active search input, no pending drain confirmation, no open modal) is
+ *   active search input, no pending drain confirmation, no open detail view) is
  *   routed to `store.closeSearch()` rather than being a true no-op: this is
  *   the only way to clear an "accepted" filter (see above) without
  *   switching queue/tab, and `closeSearch()` is already a safe no-op when
@@ -37,7 +37,7 @@ const TAB_ORDER: JobStatus[] = ['delayed', 'waiting', 'active', 'failed', 'compl
  *   keymap conflicts with it, and requiring an extra `Tab` press first
  *   would be a needless speed bump.
  * - **`q` is context-sensitive, not a global override**: it quits from the
- *   global and detail-modal states, but is ignored while a drain
+ *   global and detail-view states, but is ignored while a drain
  *   confirmation is pending (only `y`/`Y`/`n`/`N`/`Escape` are honored
  *   there) and is treated as a literal character while typing in search.
  * - **Tab/queue navigation does not wrap** at the ends (clamped), matching

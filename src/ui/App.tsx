@@ -9,7 +9,7 @@ import { Header } from './Header.js';
 import { useKeymap } from './hooks/useKeymap.js';
 import { useStore } from './hooks/useStore.js';
 import { useTerminalDimensions } from './hooks/useTerminalDimensions.js';
-import { JobDetailModal } from './JobDetailModal.js';
+import { JobDetailView } from './JobDetailView.js';
 import { JobTable } from './JobTable.js';
 import { QueueTable } from './QueueTable.js';
 import { SearchBar } from './SearchBar.js';
@@ -153,7 +153,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
         ) : snapshot.detailLoading || snapshot.detail === null ? (
           <Text dimColor>Loading job detail…</Text>
         ) : (
-          <JobDetailModal detail={snapshot.detail} queueName={snapshot.currentView.queueName} />
+          <JobDetailView detail={snapshot.detail} queueName={snapshot.currentView.queueName} />
         )}
       </Box>
       <Toast toasts={snapshot.toasts} />

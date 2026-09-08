@@ -12,7 +12,7 @@ const DAY_MS = 24 * HOUR_MS;
  * Normalizes a job's raw `progress` value for display: a finite number is
  * clamped to 0-100; anything else (an object, a string, `undefined`, `NaN`)
  * becomes `null` so the UI can render a `—` placeholder. The raw value is
- * always preserved separately (`JobDetail.rawProgress`) for the detail modal.
+ * always preserved separately (`JobDetail.rawProgress`) for the detail view.
  */
 export function normalizeProgress(raw: unknown): number | null {
   if (typeof raw !== 'number' || !Number.isFinite(raw)) {
@@ -88,7 +88,7 @@ export function maskRedisUrl(url: string): string {
 }
 
 /**
- * Human-readable timestamp for table/modal display, e.g. `2026-07-05
+ * Human-readable timestamp for table/detail-view display, e.g. `2026-07-05
  * 14:03:21`, rendered in the local timezone (matches what a person sitting
  * at the terminal expects to see).
  */

@@ -2,7 +2,7 @@ import { Box, Text } from 'ink';
 import { formatClock } from '../core/format.js';
 import type { JobDetail } from '../core/types.js';
 
-export interface JobDetailModalProps {
+export interface JobDetailViewProps {
   detail: JobDetail;
   queueName?: string;
 }
@@ -11,7 +11,7 @@ export interface JobDetailModalProps {
  * Caps pretty-printed JSON payloads at this many lines before appending a
  * `… (truncated)` marker — a job's `data`/`opts`/`returnvalue` can in
  * principle be arbitrarily large, and an unbounded render would blow past
- * the terminal height and make the modal unusable.
+ * the terminal height and make the view unusable.
  */
 const MAX_PAYLOAD_LINES = 20;
 
@@ -61,16 +61,16 @@ function MetaRow({ label, value }: { label: string; value: string }) {
 const LEFT_COLUMN_WIDTH = 34;
 
 /**
- * Two-column job detail overlay. The left column holds compact metadata — the
+ * Two-column job detail view. The left column holds compact metadata — the
  * `name #id` header, timestamps, attempts, and progress — at a fixed width; the
  * right column grows to fill the remaining space with the bulky content: pretty
  * `data`/`opts` JSON, `returnvalue` when present, and `stacktrace` lines when
  * non-empty. Real overlay/centering positioning happens in `App.tsx`
- * (Phase 8) — this component just renders the modal box itself. Loading is
+ * (Phase 8) — this component just renders the view box itself. Loading is
  * the caller's concern: this component always renders a fully-loaded
  * `detail` (the parent only mounts it once `detailLoading` is false).
  */
-export function JobDetailModal({ detail, queueName }: JobDetailModalProps) {
+export function JobDetailView({ detail, queueName }: JobDetailViewProps) {
   const progressLine =
     detail.progress === null ? prettyJson(detail.rawProgress) : `${detail.progress}%`;
 

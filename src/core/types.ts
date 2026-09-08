@@ -23,7 +23,7 @@ export interface JobSummary {
   progress: number | null;
 }
 
-/** Full job payload shown in the job detail modal. */
+/** Full job payload shown in the job detail view. */
 export interface JobDetail extends JobSummary {
   data: unknown;
   returnvalue: unknown;

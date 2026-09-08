@@ -128,7 +128,7 @@ export interface DashboardSnapshot {
 
 /**
  * Framework-agnostic dashboard state machine. Owns every behavior in the
- * spec (tabs, pagination, search, refresh/polling, focus, modal, drain and
+ * spec (tabs, pagination, search, refresh/polling, focus, detail view, drain and
  * duplicate confirmations, toasts, action dispatch, connection/error
  * handling) with
  * zero UI dependencies — `src/core/**` must never import `ink`/`react`.
@@ -797,9 +797,9 @@ export class DashboardStore {
   // --- detail view --------------------------------------------------------
 
   /**
-   * Fetches and opens the detail modal for the currently selected job.
+   * Fetches and opens the detail view for the currently selected job.
    * Missing job (deleted mid-flight) surfaces a toast instead of opening
-   * the modal. Unlike `actions.ts`, `getJobDetail` is NOT covered by the
+   * the view. Unlike `actions.ts`, `getJobDetail` is NOT covered by the
    * actions "never throws" contract — it makes live Redis calls
    * (`queue.getJob`, `job.getState`) that can reject on a connection blip
    * — so a rejection here is caught explicitly and normalized into a
