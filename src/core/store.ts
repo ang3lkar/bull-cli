@@ -91,17 +91,21 @@ export interface DashboardSnapshot {
   page: number;
   jobPage: JobPage | null;
   /**
-   * Last-known job count for every status tab of the SELECTED queue,
-   * cached per queue name so a tab switch (same queue) or a switch back to
-   * a previously-visited queue shows its own real counts immediately
-   * instead of flickering to bare labels. Only a fresh fetch result for a
-   * given queue replaces that queue's cached entry — a `jobPage === null`
-   * moment (mid tab/queue switch, or that queue's fetch failing) does NOT
-   * clear it, so a queue that starts failing keeps showing its own
-   * last-known counts (never another queue's) for as long as it keeps
-   * failing. `null` when no queue is selected, or when the selected queue
-   * has never had a successful fetch yet (including a queue that fails on
-   * every attempt so far) — there is nothing cached for it to show.
+   * Last-known job count for every status tab of the SELECTED queue — the
+   * selected queue's own entry in the same `queueCounts` cache the
+   * top-level queue table reads. Sharing one cache is what makes entering
+   * a queue instant: its counts are already known from the queue table
+   * screen, so the tab row renders real numbers immediately and the
+   * in-flight fetch merely updates them, rather than the row starting as
+   * bare labels. Equally, a tab switch or a switch back to another queue
+   * keeps showing that queue's numbers.
+   *
+   * The cache is keyed per queue name and only ever replaced by a fresh
+   * result for that same name, so these are never another queue's counts;
+   * a `jobPage === null` moment (mid tab/queue switch) or a failing fetch
+   * does NOT clear it, so a queue that starts failing keeps its
+   * last-known numbers. `null` only when no queue is selected, or before
+   * the very first successful count fetch.
    */
   tabCounts: Record<JobStatus, number> | null;
   selectedJobId: string | null;
@@ -181,8 +185,6 @@ export class DashboardStore {
   private tab: JobStatus = 'active';
   private page = 0;
   private jobPage: JobPage | null = null;
-  /** Last-known tab counts per queue name; see `DashboardSnapshot.tabCounts`. */
-  private readonly tabCountsByQueue = new Map<string, Record<JobStatus, number>>();
   private selectedJobId: string | null = null;
   private searchActive = false;
   private searchQuery = '';
@@ -264,7 +266,7 @@ export class DashboardStore {
       jobPage: this.jobPage,
       tabCounts:
         this.selectedQueueName !== null
-          ? (this.tabCountsByQueue.get(this.selectedQueueName) ?? null)
+          ? (this.queueCountsByName.get(this.selectedQueueName) ?? null)
           : null,
       selectedJobId: this.selectedJobId,
       search: { active: this.searchActive, query: this.searchQuery },
@@ -471,7 +473,6 @@ export class DashboardStore {
 
         this.page = jobPage.page;
         this.jobPage = jobPage;
-        this.tabCountsByQueue.set(queueName, jobPage.counts);
         this.queueCountsByName.set(queueName, jobPage.counts);
         this.selectedJobId = this.resolveSelectedJobId(prevSelectedJobId, prevJobs, jobPage.jobs);
       }
@@ -483,15 +484,18 @@ export class DashboardStore {
         return;
       }
       this.jobPage = null;
-      // Deliberately NOT touching `tabCountsByQueue` here: the cache is
-      // keyed per queue name, so a failing fetch for `queueName` simply
-      // leaves that queue's entry as whatever it last was — its own
-      // last-known counts if it has ever succeeded before, or absent
-      // (snapshot shows `null`) if it never has. Either way it's never
-      // another queue's counts, and the failure is already surfaced via
-      // the toast below. A queue that fails on every attempt keeps
-      // showing its own stale counts (or `null`) indefinitely — the toast
-      // itself only fires once per failure transition (deduped via
+      // Deliberately NOT touching `queueCountsByName` here: it's keyed per
+      // queue name, so a failing `fetchJobPage` for `queueName` simply
+      // leaves that queue's entry as whatever it last was — this cycle's
+      // `fetchQueueCounts`, which is a lighter call that a blip during the
+      // heavier `getJobs` may not have hit; that queue's own last-known
+      // counts; or absent (snapshot shows `null`) when it has never had
+      // any, which is the case for a queue bullmq refuses to open at all
+      // (a `:` in the name fails BOTH calls, every cycle — see
+      // `queueRegistry.ts`). Either way it's never another queue's
+      // counts, and the
+      // failure is already surfaced via the toast below. The toast itself
+      // only fires once per failure transition (deduped via
       // `jobFetchErrorQueue`), so the empty job table is the persistent
       // signal of an ongoing failure.
       this.selectedJobId = null;

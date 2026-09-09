@@ -61,6 +61,11 @@ function countsForQueue(state: FakeState, queueName: string): Record<JobStatus, 
 function createFakeDeps(state: FakeState): StoreDeps {
   return {
     discoverQueues: vi.fn(async () => state.queues),
+    // Present in the real wiring for every discovered queue (`wiring.ts`),
+    // which is what lets a queue's counts be known before it's ever
+    // entered — the fake must match, or the tabCounts tests below run in a
+    // configuration production never produces.
+    fetchQueueCounts: vi.fn(async (queueName: string) => countsForQueue(state, queueName)),
     fetchJobPage: vi.fn(async (queueName: string, status: JobStatus, page: number) => ({
       ...paginate(state.jobs[jobKey(queueName, status)] ?? [], page),
       counts: countsForQueue(state, queueName),
@@ -448,7 +453,7 @@ describe('DashboardStore: tabCounts', () => {
     expect(store.getSnapshot().tabCounts).toEqual(initialCounts);
   });
 
-  it('shows null synchronously when switching to a never-visited queue, then that queue gets its own fresh counts once fetched', async () => {
+  it("shows a never-visited queue's counts immediately, from what the queue table already knows", async () => {
     const state: FakeState = {
       queues: [makeQueue('a'), makeQueue('b')],
       jobs: {
@@ -470,22 +475,26 @@ describe('DashboardStore: tabCounts', () => {
       delayed: 0,
     });
 
-    store.selectQueue('b');
-    // Synchronously: 'b' has never been fetched, so nothing is cached for
-    // it yet — this is the per-queue cache's accepted first-visit cost
-    // (distinct from queue 'a's counts, which are never shown for 'b').
-    expect(store.getSnapshot().jobPage).toBeNull();
-    expect(store.getSnapshot().tabCounts).toBeNull();
-
-    await flush();
-    // Replaced by queue b's own fresh counts.
-    expect(store.getSnapshot().tabCounts).toEqual({
+    const countsForB = {
       active: 0,
       waiting: 0,
       completed: 0,
       failed: 3,
       delayed: 0,
-    });
+    };
+
+    store.selectQueue('b');
+    // Synchronously, before the job-page refetch resolves: 'b' has never
+    // been entered, but the queue table already fetched its counts, and
+    // that's the same cache `tabCounts` reads — so the tab row shows real
+    // numbers straight away instead of blank slots. They are b's own
+    // counts, never queue a's.
+    expect(store.getSnapshot().jobPage).toBeNull();
+    expect(store.getSnapshot().tabCounts).toEqual(countsForB);
+
+    await flush();
+    // The landed fetch confirms rather than introduces them.
+    expect(store.getSnapshot().tabCounts).toEqual(countsForB);
   });
 
   it("shows a previously-visited queue's own cached counts immediately when switching back to it", async () => {
@@ -567,6 +576,9 @@ describe('DashboardStore: tabCounts', () => {
     await store.refresh();
     const snap = store.getSnapshot();
     expect(snap.jobPage).toBeNull();
+    // The job page is gone, but the counts are not: `fetchQueueCounts` is a
+    // separate, lighter call that this blip didn't take out, and even if it
+    // had, the queue's cache entry is left untouched rather than cleared.
     expect(snap.tabCounts).toEqual(healthyCounts);
   });
 
@@ -577,6 +589,18 @@ describe('DashboardStore: tabCounts', () => {
       details: {},
     };
     const deps = createFakeDeps(state);
+    // A `:` in the name makes `new Queue(name, ...)` throw synchronously, so
+    // in the real wiring EVERY read for this queue fails — counts included
+    // (both go through `safeFetch`/the registry). The fake fails both
+    // paths, or this wouldn't be a queue with no counts at all.
+    (deps.fetchQueueCounts as ReturnType<typeof vi.fn>).mockImplementation(
+      async (queueName: string) => {
+        if (queueName === 'billing:invoices') {
+          throw new Error('Queue name cannot contain :');
+        }
+        return countsForQueue(state, queueName);
+      },
+    );
     (deps.fetchJobPage as ReturnType<typeof vi.fn>).mockImplementation(
       async (queueName: string, status: JobStatus, page: number) => {
         if (queueName === 'billing:invoices') {
@@ -600,9 +624,9 @@ describe('DashboardStore: tabCounts', () => {
       delayed: 0,
     });
 
-    // 'billing:invoices' has never had a successful fetch: its cache entry
-    // is empty, so it must show `null` — NEVER queue a's cached counts,
-    // even though a's entry is still sitting in the map.
+    // 'billing:invoices' has never had a successful read of any kind: it has
+    // no cache entry, so it must show `null` — NEVER queue a's counts, even
+    // though a's entry is still sitting in the same map.
     store.selectQueue('billing:invoices');
     await flush();
     const snap = store.getSnapshot();

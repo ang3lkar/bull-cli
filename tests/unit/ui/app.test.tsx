@@ -205,6 +205,29 @@ describe('App: stack navigation', () => {
   });
 });
 
+describe('App: entering a queue', () => {
+  it('shows the tab counts straight away, from the queue table, while the job page loads', async () => {
+    const { deps, stdin, lastFrame } = await mount();
+    // Every emailQ status holds exactly one job in this fixture, so the
+    // counts the queue table already fetched render as `(1)` in each of the
+    // tab row's 6-wide slots.
+    expect(lastFrame()).toContain('emailQ');
+
+    // Hang the job-page fetch: whatever the tab row shows now can only have
+    // come from what was already known before Enter was pressed.
+    deps.fetchJobPage = vi.fn(() => new Promise<JobPage>(() => {}));
+
+    stdin.write('\r');
+    await flush();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('[Delayed]   (1)');
+    expect(frame).toContain('Waiting');
+    // The blank-slot rendering (`Tabs` with `counts == null`) would put six
+    // spaces where the count is.
+    expect(frame).not.toContain('[Delayed]      ');
+  });
+});
+
 describe('App: contextual actions', () => {
   it('confirms deletion from the job view before acting', async () => {
     const { deps, stdin, store } = await mount();
