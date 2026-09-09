@@ -124,6 +124,18 @@ export interface DashboardSnapshot {
   toasts: Toast[];
   lastUpdatedAt: number | null;
   refreshing: boolean;
+  /**
+   * `false` until the first refresh cycle has fully resolved (discovery +
+   * per-queue counts), then permanently `true`. Distinguishes "we don't
+   * know what's on this Redis yet" from "we looked and there are no
+   * queues", which the connection status alone can't: the redis client's
+   * `ready` event reaches `onConnectionStatus` well before `SCAN`-based
+   * discovery returns, so `connection.state === 'ready'` coexists with an
+   * empty `queues` on a slow/large instance. Latched, never reset — a
+   * failing poll or a Redis blip must not flash the loading screen again
+   * over data that's already on screen.
+   */
+  initialLoadComplete: boolean;
 }
 
 /**
@@ -185,6 +197,8 @@ export class DashboardStore {
   private toasts: Toast[] = [];
   private lastUpdatedAt: number | null = null;
   private refreshing = false;
+  /** Latched on the first fully-resolved refresh; see `DashboardSnapshot.initialLoadComplete`. */
+  private initialLoadComplete = false;
 
   // --- refresh machinery ----------------------------------------------
   private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -264,6 +278,7 @@ export class DashboardStore {
       toasts: this.toasts,
       lastUpdatedAt: this.lastUpdatedAt,
       refreshing: this.refreshing,
+      initialLoadComplete: this.initialLoadComplete,
     });
   }
 
@@ -491,6 +506,11 @@ export class DashboardStore {
 
     this.connection = { state: 'ready' };
     this.lastUpdatedAt = this.now();
+    // Only reached by a cycle that survived every `myGen` checkpoint, so a
+    // superseded/timed-out refresh never flips this — and it's after the
+    // per-queue counts have landed, so the queue table has real numbers the
+    // first time it's shown rather than a screen of zeros.
+    this.initialLoadComplete = true;
   }
 
   /** Preserves the selected queue by name; clamps to the nearest remaining queue (by its old index) if it vanished, or `null` if none are left. */

@@ -107,6 +107,44 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe('App: first-load states', () => {
+  it('shows the loading state until the first refresh resolves', async () => {
+    const { deps, store, onQuit } = setup();
+    stores.push(store);
+    let releaseDiscovery!: (queues: QueueInfo[]) => void;
+    deps.discoverQueues = vi.fn(
+      () =>
+        new Promise<QueueInfo[]>((resolve) => {
+          releaseDiscovery = resolve;
+        }),
+    );
+
+    const refreshing = store.refresh();
+    const { lastFrame } = render(<App store={store} onQuit={onQuit} />);
+    await flush();
+    expect(lastFrame()).toContain('Discovering queues on redis://localhost:6379');
+    expect(lastFrame()).not.toContain('No BullMQ queues found');
+
+    releaseDiscovery([{ name: 'emailQ', isPaused: false }]);
+    await refreshing;
+    await flush();
+    expect(lastFrame()).toContain('emailQ');
+    expect(lastFrame()).not.toContain('Discovering queues');
+  });
+
+  it('shows the empty state only once discovery has actually found nothing', async () => {
+    const { deps, store, onQuit } = setup();
+    stores.push(store);
+    deps.discoverQueues = vi.fn(async () => []);
+
+    await store.refresh();
+    const { lastFrame } = render(<App store={store} onQuit={onQuit} />);
+    await flush();
+    expect(lastFrame()).toContain('No BullMQ queues found on redis://localhost:6379');
+    expect(lastFrame()).not.toContain('Discovering queues');
+  });
+});
+
 describe('App: stack navigation', () => {
   it('renders the full-width queue view and enters a selected queue', async () => {
     const { stdin, lastFrame, store } = await mount();

@@ -11,6 +11,7 @@ import { useStore } from './hooks/useStore.js';
 import { useTerminalDimensions } from './hooks/useTerminalDimensions.js';
 import { JobDetailView } from './JobDetailView.js';
 import { JobTable } from './JobTable.js';
+import { Loading } from './Loading.js';
 import { QueueTable } from './QueueTable.js';
 import { SearchBar } from './SearchBar.js';
 import { Tabs } from './Tabs.js';
@@ -52,6 +53,23 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
         <Box flexGrow={1}>
           <ErrorScreen url={snapshot.connection.url} message={snapshot.connection.message} />
         </Box>
+      </Box>
+    );
+  }
+
+  if (!snapshot.initialLoadComplete) {
+    return (
+      <Box flexDirection="column" height={rows} paddingTop={1} paddingX={1}>
+        <Header
+          version={version}
+          view={snapshot.currentView}
+          status={snapshot.tab}
+          width={contentWidth}
+        />
+        <Box flexGrow={1}>
+          <Loading url={snapshot.redisUrl} />
+        </Box>
+        <Footer redisUrl={snapshot.redisUrl} />
       </Box>
     );
   }

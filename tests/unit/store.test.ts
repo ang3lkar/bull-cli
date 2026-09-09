@@ -1235,6 +1235,84 @@ describe('DashboardStore: connection', () => {
   });
 });
 
+describe('DashboardStore: initialLoadComplete', () => {
+  it('stays false until the first refresh cycle resolves', async () => {
+    const state: FakeState = { queues: [makeQueue('a')], jobs: {}, details: {} };
+    const deps = createFakeDeps(state);
+    const gate = deferred<QueueInfo[]>();
+    deps.discoverQueues = vi.fn(() => gate.promise);
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+
+    expect(store.getSnapshot().initialLoadComplete).toBe(false);
+
+    const refreshing = store.refresh();
+    await flush();
+    // Discovery is still in flight: nothing is known about this Redis yet.
+    expect(store.getSnapshot().initialLoadComplete).toBe(false);
+    expect(store.getSnapshot().queues).toEqual([]);
+
+    gate.resolve(state.queues);
+    await refreshing;
+    expect(store.getSnapshot().initialLoadComplete).toBe(true);
+  });
+
+  it('is not implied by the redis client reporting ready', async () => {
+    const state: FakeState = { queues: [makeQueue('a')], jobs: {}, details: {} };
+    const deps = createFakeDeps(state);
+    deps.discoverQueues = vi.fn(() => deferred<QueueInfo[]>().promise);
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+
+    // The client's 'ready' event fires long before SCAN-based discovery
+    // returns, so `connection.state` alone can't gate the loading screen.
+    store.onConnectionStatus({ state: 'ready' });
+    await flush();
+    expect(store.getSnapshot().connection).toEqual({ state: 'ready' });
+    expect(store.getSnapshot().initialLoadComplete).toBe(false);
+  });
+
+  it('flips to true when discovery legitimately finds no queues', async () => {
+    const state: FakeState = { queues: [], jobs: {}, details: {} };
+    const store = track(new DashboardStore(createFakeDeps(state), { redisUrl: 'redis://x' }));
+
+    await store.refresh();
+    expect(store.getSnapshot().initialLoadComplete).toBe(true);
+    expect(store.getSnapshot().queues).toEqual([]);
+  });
+
+  it('stays false while the first refresh keeps failing, then latches on success', async () => {
+    const state: FakeState = { queues: [makeQueue('a')], jobs: {}, details: {} };
+    const deps = createFakeDeps(state);
+    deps.discoverQueues = vi
+      .fn<StoreDeps['discoverQueues']>()
+      .mockRejectedValueOnce(new Error('ECONNREFUSED'))
+      .mockResolvedValue(state.queues);
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+
+    await store.refresh();
+    expect(store.getSnapshot().connection.state).toBe('error');
+    expect(store.getSnapshot().initialLoadComplete).toBe(false);
+
+    await store.refresh();
+    expect(store.getSnapshot().initialLoadComplete).toBe(true);
+  });
+
+  it('is never reset once latched, so a later failure keeps the data on screen', async () => {
+    const state: FakeState = { queues: [makeQueue('a')], jobs: {}, details: {} };
+    const deps = createFakeDeps(state);
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+
+    await store.refresh();
+    expect(store.getSnapshot().initialLoadComplete).toBe(true);
+
+    deps.discoverQueues = vi.fn(async () => {
+      throw new Error('connection lost');
+    });
+    await store.refresh();
+    expect(store.getSnapshot().connection.state).toBe('error');
+    expect(store.getSnapshot().initialLoadComplete).toBe(true);
+  });
+});
+
 describe('DashboardStore: detail view', () => {
   it('opens the detail view for the selected job', async () => {
     const detail: JobDetail = {
