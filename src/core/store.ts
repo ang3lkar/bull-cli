@@ -114,6 +114,16 @@ export interface DashboardSnapshot {
   visibleJobs: JobSummary[];
   detail: JobDetail | null;
   detailLoading: boolean;
+  /**
+   * `true` while a queue/tab switch has cleared the job list and the fetch
+   * that will refill it hasn't resolved yet. Without it, `jobPage === null`
+   * conflates "not fetched yet" with "genuinely empty", so switching to a
+   * tab whose count says 1 renders "No failed jobs" until the page lands.
+   * Cleared by the END of a refresh cycle whether it succeeded or failed —
+   * a failing queue must fall back to the empty table (plus its toast),
+   * never to a loading message that never goes away.
+   */
+  jobsLoading: boolean;
   confirmDrain: boolean;
   /**
    * Job id awaiting duplicate ("clone") confirmation, or `null` when none
@@ -190,6 +200,8 @@ export class DashboardStore {
   private searchQuery = '';
   private detail: JobDetail | null = null;
   private detailLoading = false;
+  /** See `DashboardSnapshot.jobsLoading`. */
+  private jobsLoading = false;
   private confirmDrainFlag = false;
   /** Pending delete confirmation, captured at request time. */
   private pendingDelete: { queueName: string; jobId: string } | null = null;
@@ -273,6 +285,7 @@ export class DashboardStore {
       visibleJobs: filterJobs(jobs, this.searchQuery),
       detail: this.detail,
       detailLoading: this.detailLoading,
+      jobsLoading: this.jobsLoading,
       confirmDrain: this.confirmDrainFlag,
       confirmDuplicateJobId: this.pendingDuplicate?.jobId ?? null,
       confirmDeleteJobId: this.pendingDelete?.jobId ?? null,
@@ -510,6 +523,14 @@ export class DashboardStore {
 
     this.connection = { state: 'ready' };
     this.lastUpdatedAt = this.now();
+    // Deliberately here rather than in each branch above: every non-
+    // superseded outcome — a landed page, no queue to load, or a failed
+    // fetch — reaches this line, and a superseded cycle returns before it
+    // instead of clearing a flag the navigation that superseded it just
+    // set. A cycle killed by `refreshTimeoutMs` never resolves and so
+    // leaves the flag set, but that's behind the full-screen connection
+    // error until a later cycle clears it.
+    this.jobsLoading = false;
     // Only reached by a cycle that survived every `myGen` checkpoint, so a
     // superseded/timed-out refresh never flips this — and it's after the
     // per-queue counts have landed, so the queue table has real numbers the
@@ -700,6 +721,11 @@ export class DashboardStore {
   private resetQueueOrTabSwitch(): void {
     this.page = 0;
     this.jobPage = null;
+    // Every caller (`selectQueue`, `selectTab`, `pushJobsView`) triggers a
+    // refresh immediately after, so this is always paired with a fetch that
+    // will clear it. Paging deliberately does NOT come through here: it
+    // keeps the old rows on screen, so its `jobs.length` never lies.
+    this.jobsLoading = true;
     this.selectedJobId = null;
     this.searchActive = false;
     this.searchQuery = '';

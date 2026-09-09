@@ -144,6 +144,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
                 pageCount={snapshot.jobPage?.pageCount ?? 1}
                 width={contentWidth}
                 counts={snapshot.tabCounts}
+                loading={snapshot.jobsLoading}
               />
             </Box>
           </>

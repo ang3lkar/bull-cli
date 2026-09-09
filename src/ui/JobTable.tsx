@@ -13,6 +13,13 @@ export interface JobTableProps {
   width?: number;
   /** Counts for all status buckets, used to guide an empty list to useful alternatives. */
   counts?: Record<JobStatus, number> | null;
+  /**
+   * `true` while the page for this queue/tab is still being fetched (see
+   * `DashboardSnapshot.jobsLoading`). An empty list then means "not loaded
+   * yet", not "nothing here" — showing `EmptyJobs` would contradict the
+   * tab row's own count right above it.
+   */
+  loading?: boolean;
   /** @deprecated Single-focus views always render the selected row as focused. */
   focused?: boolean;
   /** @deprecated Kept for compatibility with older callers. */
@@ -146,6 +153,14 @@ function EmptyJobs({
   );
 }
 
+function LoadingJobs({ status }: { status: JobStatus }) {
+  return (
+    <Box flexDirection="column" alignItems="center" marginTop={2}>
+      <Text dimColor>Loading {status} jobs…</Text>
+    </Box>
+  );
+}
+
 /** Full-width, single-focus job table. */
 export function JobTable({
   jobs,
@@ -155,6 +170,7 @@ export function JobTable({
   pageCount,
   width,
   counts,
+  loading = false,
 }: JobTableProps) {
   return (
     <Box flexDirection="column">
@@ -168,7 +184,11 @@ export function JobTable({
         <Text bold>{headerLine(width)}</Text>
       </Box>
       {jobs.length === 0 ? (
-        <EmptyJobs status={status} counts={counts} />
+        loading ? (
+          <LoadingJobs status={status} />
+        ) : (
+          <EmptyJobs status={status} counts={counts} />
+        )
       ) : (
         <>
           {jobs.map((job) => {

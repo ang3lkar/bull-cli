@@ -96,6 +96,27 @@ describe('JobTable', () => {
     expect(lastFrame()).not.toContain('Page');
   });
 
+  it('shows a loading line rather than the empty state while the page is still being fetched', () => {
+    const { lastFrame } = render(
+      <JobTable
+        jobs={[]}
+        status="failed"
+        counts={{ active: 0, waiting: 0, completed: 0, failed: 1, delayed: 0 }}
+        selectedJobId={null}
+        page={0}
+        pageCount={1}
+        loading
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    // An empty list under `loading` means "not fetched yet"; claiming the
+    // status is empty would contradict the count of 1 for it.
+    expect(frame).toContain('Loading failed jobs…');
+    expect(frame).not.toContain('◌ No failed jobs');
+    // The column header stays, as it does for every other state.
+    expect(frame).toContain('ID');
+  });
+
   it('marks the selected row with the focused marker when focused', () => {
     const { lastFrame } = render(
       <JobTable

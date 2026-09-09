@@ -1259,6 +1259,125 @@ describe('DashboardStore: connection', () => {
   });
 });
 
+describe('DashboardStore: jobsLoading', () => {
+  const stateWithTwoTabs = (): FakeState => ({
+    queues: [makeQueue('a'), makeQueue('b')],
+    jobs: {
+      [jobKey('a', 'active')]: [makeJob('a1', 'j1')],
+      [jobKey('a', 'failed')]: [makeJob('a2', 'j2')],
+    },
+    details: {},
+  });
+
+  it('is false before anything has been asked for, and after a refresh lands', async () => {
+    const deps = createFakeDeps(stateWithTwoTabs());
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+
+    expect(store.getSnapshot().jobsLoading).toBe(false);
+    await store.refresh();
+    expect(store.getSnapshot().jobsLoading).toBe(false);
+  });
+
+  it('covers the window where a tab switch has cleared the page but the fetch has not landed', async () => {
+    const state = stateWithTwoTabs();
+    const deps = createFakeDeps(state);
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+
+    const { promise, resolve } = deferred<JobPage>();
+    (deps.fetchJobPage as ReturnType<typeof vi.fn>).mockReturnValueOnce(promise);
+
+    store.selectTab('failed');
+    // Synchronously: the page is gone and its replacement is in flight, so
+    // an empty job list means "not loaded yet" — the tab row's count for
+    // this status says 1.
+    expect(store.getSnapshot().jobPage).toBeNull();
+    expect(store.getSnapshot().jobsLoading).toBe(true);
+    expect(store.getSnapshot().tabCounts?.failed).toBe(1);
+
+    resolve({
+      ...paginate(state.jobs[jobKey('a', 'failed')] ?? [], 0),
+      counts: countsForQueue(state, 'a'),
+    });
+    await flush();
+    expect(store.getSnapshot().jobsLoading).toBe(false);
+    expect(store.getSnapshot().jobPage?.jobs).toHaveLength(1);
+  });
+
+  it('covers a queue switch the same way', async () => {
+    const deps = createFakeDeps(stateWithTwoTabs());
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+
+    (deps.fetchJobPage as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      deferred<JobPage>().promise,
+    );
+    store.selectQueue('b');
+    expect(store.getSnapshot().jobsLoading).toBe(true);
+  });
+
+  it('clears on a FAILED fetch, so a broken queue falls back to the empty table and not to a loading message forever', async () => {
+    const deps = createFakeDeps(stateWithTwoTabs());
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+
+    (deps.fetchJobPage as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Redis blip'));
+    store.selectTab('failed');
+    expect(store.getSnapshot().jobsLoading).toBe(true);
+
+    await flush();
+    const snap = store.getSnapshot();
+    expect(snap.jobPage).toBeNull();
+    expect(snap.jobsLoading).toBe(false);
+    expect(snap.toasts[0]?.message).toContain('Could not load queue "a"');
+  });
+
+  it('is not cleared by a refresh that a later navigation superseded', async () => {
+    const state = stateWithTwoTabs();
+    const deps = createFakeDeps(state);
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+
+    // The 'failed' fetch hangs; while it does, the user moves on to another
+    // tab. The stale cycle must not report "loaded" for a page nobody is
+    // waiting for any more.
+    const stale = deferred<JobPage>();
+    (deps.fetchJobPage as ReturnType<typeof vi.fn>).mockReturnValueOnce(stale.promise);
+    store.selectTab('failed');
+    store.selectTab('waiting');
+    expect(store.getSnapshot().jobsLoading).toBe(true);
+
+    stale.resolve({
+      ...paginate(state.jobs[jobKey('a', 'failed')] ?? [], 0),
+      counts: countsForQueue(state, 'a'),
+    });
+    await flush();
+    // The 'waiting' fetch is what clears it, having actually landed.
+    expect(store.getSnapshot().jobsLoading).toBe(false);
+    expect(store.getSnapshot().tab).toBe('waiting');
+  });
+
+  it('is not set by paging, which keeps the previous rows on screen', async () => {
+    const state: FakeState = {
+      queues: [makeQueue('a')],
+      jobs: {
+        [jobKey('a', 'active')]: Array.from({ length: 25 }, (_, i) => makeJob(`j${i}`, 'job')),
+      },
+      details: {},
+    };
+    const deps = createFakeDeps(state);
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+
+    (deps.fetchJobPage as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      deferred<JobPage>().promise,
+    );
+    store.nextPage();
+    expect(store.getSnapshot().jobsLoading).toBe(false);
+    expect(store.getSnapshot().jobPage?.jobs).toHaveLength(10);
+  });
+});
+
 describe('DashboardStore: initialLoadComplete', () => {
   it('stays false until the first refresh cycle resolves', async () => {
     const state: FakeState = { queues: [makeQueue('a')], jobs: {}, details: {} };

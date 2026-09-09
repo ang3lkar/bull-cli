@@ -228,6 +228,40 @@ describe('App: entering a queue', () => {
   });
 });
 
+describe('App: loading a job list', () => {
+  it('says the jobs are loading instead of claiming the tab is empty', async () => {
+    const { deps, stdin, lastFrame } = await mount();
+    stdin.write('\r');
+    await flush();
+
+    deps.fetchJobPage = vi.fn(() => new Promise<JobPage>(() => {}));
+    stdin.write('4'); // the Failed tab, whose count is 1 in this fixture
+    await flush();
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('[Failed]   (1)');
+    expect(frame).toContain('Loading failed jobs…');
+    expect(frame).not.toContain('No failed jobs');
+  });
+
+  it('falls back to the empty state (not an endless loading message) when the fetch fails', async () => {
+    const { deps, stdin, lastFrame } = await mount();
+    stdin.write('\r');
+    await flush();
+
+    deps.fetchJobPage = vi.fn(async () => {
+      throw new Error('Redis blip');
+    });
+    stdin.write('4');
+    await flush();
+
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toContain('Loading failed jobs…');
+    expect(frame).toContain('No failed jobs');
+    expect(frame).toContain('Could not load queue "emailQ"');
+  });
+});
+
 describe('App: contextual actions', () => {
   it('confirms deletion from the job view before acting', async () => {
     const { deps, stdin, store } = await mount();
