@@ -688,6 +688,25 @@ export class DashboardStore {
     this.emit();
   }
 
+  /**
+   * Jumps straight back to the root queue dashboard from any depth, in one
+   * key press. Same bookkeeping as `popView`, just applied to the whole
+   * stack at once: detail data is discarded when leaving its screen, and
+   * queue/tab/job selection and search state are all left intact.
+   */
+  popToQueues(): void {
+    if (this.navigationStack.length === 1) {
+      return;
+    }
+    const leaving = this.currentView();
+    this.navigationStack = [{ kind: 'queues' }];
+    if (leaving.kind === 'detail') {
+      this.detail = null;
+      this.detailLoading = false;
+    }
+    this.emit();
+  }
+
   private currentView(): NavigationView {
     return this.navigationStack[this.navigationStack.length - 1];
   }

@@ -26,6 +26,22 @@ describe('Header', () => {
     expect(lastFrame()).toContain('Refresh');
   });
 
+  it('advertises the jump home only where there is somewhere to jump from', () => {
+    const queues = render(<Header version="1.2.3" view={{ kind: 'queues' }} />).lastFrame() ?? '';
+    expect(queues).not.toContain('<H>');
+    expect(queues).not.toContain('Home');
+
+    for (const view of [
+      { kind: 'jobs', queueName: 'emailQ' },
+      { kind: 'detail', queueName: 'emailQ', jobId: '43' },
+    ] as const) {
+      const frame = render(<Header version="1.2.3" view={view} />).lastFrame() ?? '';
+      expect(frame).toContain('<H>');
+      expect(frame).toContain('Home');
+      expect(frame).toContain('Back');
+    }
+  });
+
   it('is app chrome only: never reports where you are', () => {
     // Location lives in the body's `Breadcrumb`, so the title bar must not repeat it.
     const { lastFrame } = render(

@@ -166,8 +166,9 @@ A missing file is perfectly fine and just falls back to defaults.
 - **Status bar** — a compact Redis URL, with any password masked.
 
 Only one view is visible at a time. `Enter` drills into the selected row; `Escape` or `h` returns to
-the previous screen. Opening a queue starts on the **Delayed** status; use the status shortcuts to
-choose another bucket. Data refreshes automatically every 3 seconds, or immediately on `r`.
+the previous screen, and `H` jumps all the way back to the queue dashboard from wherever you are.
+Opening a queue starts on the **Delayed** status; use the status shortcuts to choose another bucket.
+Data refreshes automatically every 3 seconds, or immediately on `r`.
 
 Search (`/`) filters the current page of the job list by ID or name as you type. `Enter` accepts the
 current filter and closes the search input (the filtered list stays applied); `Escape` clears the
@@ -187,6 +188,7 @@ zero jobs, and a search that matches nothing names the query instead of the stat
 | `q` | Quit |
 | `r` | Manual refresh |
 | `Esc` / `h` | Return to the previous view (outside the queue dashboard) |
+| `Shift+H` | Jump straight back to the queue dashboard, from any depth |
 
 ### Queue list
 

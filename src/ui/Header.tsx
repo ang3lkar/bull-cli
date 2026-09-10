@@ -31,7 +31,7 @@ const GLOBAL_SHORTCUTS: Shortcut[] = [
 function basicShortcutsFor(view: NavigationView | undefined): Shortcut[] {
   return view?.kind === 'queues' || view === undefined
     ? GLOBAL_SHORTCUTS
-    : [{ key: 'Esc/h', label: 'Back' }, ...GLOBAL_SHORTCUTS];
+    : [{ key: 'Esc/h', label: 'Back' }, { key: 'H', label: 'Home' }, ...GLOBAL_SHORTCUTS];
 }
 
 function jobActionShortcuts(status: JobStatus | undefined): Shortcut[] {

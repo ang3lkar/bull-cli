@@ -1966,6 +1966,67 @@ describe('DashboardStore: navigation stack', () => {
     store.popView();
     expect(store.getSnapshot().navigationStack).toEqual([{ kind: 'queues' }]);
   });
+
+  it('popToQueues jumps to the root from the detail view and drops the detail data', async () => {
+    const state: FakeState = {
+      queues: [makeQueue('email')],
+      jobs: { [jobKey('email', 'active')]: [makeJob('job-1', 'send')] },
+      details: {
+        [detailKey('email', 'job-1')]: {
+          ...makeJob('job-1', 'send'),
+          progress: null,
+          data: { foo: 'bar' },
+          returnvalue: null,
+          stacktrace: [],
+          opts: {},
+          timestamps: { created: 0, processed: null, finished: null },
+          rawProgress: null,
+        },
+      },
+    };
+    const store = track(new DashboardStore(createFakeDeps(state), { redisUrl: 'redis://x' }));
+    await store.refresh();
+    store.pushJobsView();
+    await flush();
+    store.selectTab('active');
+    await flush();
+    await store.openDetail();
+    expect(store.getSnapshot().currentView.kind).toBe('detail');
+    expect(store.getSnapshot().detail).not.toBeNull();
+
+    store.popToQueues();
+
+    expect(store.getSnapshot().navigationStack).toEqual([{ kind: 'queues' }]);
+    expect(store.getSnapshot().detail).toBeNull();
+    expect(store.getSnapshot().detailLoading).toBe(false);
+    // Selection survives the jump, exactly as it does across `popView`.
+    expect(store.getSnapshot().selectedQueueName).toBe('email');
+    expect(store.getSnapshot().selectedJobId).toBe('job-1');
+  });
+
+  it('popToQueues collapses the whole stack in one call and is a no-op at the root', async () => {
+    const state: FakeState = {
+      queues: [makeQueue('email')],
+      jobs: { [jobKey('email', 'active')]: [makeJob('job-1', 'send')] },
+      details: {},
+    };
+    const store = track(new DashboardStore(createFakeDeps(state), { redisUrl: 'redis://x' }));
+    await store.refresh();
+    store.pushJobsView();
+    await flush();
+    expect(store.getSnapshot().currentView.kind).toBe('jobs');
+
+    store.popToQueues();
+    expect(store.getSnapshot().navigationStack).toEqual([{ kind: 'queues' }]);
+
+    let notified = 0;
+    store.subscribe(() => {
+      notified += 1;
+    });
+    store.popToQueues();
+    expect(store.getSnapshot().navigationStack).toEqual([{ kind: 'queues' }]);
+    expect(notified).toBe(0);
+  });
 });
 
 describe('DashboardStore: toasts', () => {

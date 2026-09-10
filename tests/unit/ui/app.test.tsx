@@ -185,6 +185,61 @@ describe('App: stack navigation', () => {
     expect(store.getSnapshot().currentView.kind).toBe('queues');
   });
 
+  it('jumps home from the job list and from job detail with H', async () => {
+    const { stdin, lastFrame, store } = await mount();
+    stdin.write('\r');
+    await flush();
+    expect(store.getSnapshot().currentView.kind).toBe('jobs');
+
+    stdin.write('H');
+    await flush();
+    expect(store.getSnapshot().currentView).toEqual({ kind: 'queues' });
+    expect(lastFrame()).toContain('smsQ');
+
+    // Two levels deep: one press, not two.
+    stdin.write('\r');
+    await flush();
+    stdin.write('3');
+    await flush();
+    stdin.write('\r');
+    await flush();
+    expect(store.getSnapshot().currentView.kind).toBe('detail');
+
+    stdin.write('H');
+    await flush();
+    expect(store.getSnapshot().currentView).toEqual({ kind: 'queues' });
+    expect(store.getSnapshot().detail).toBeNull();
+  });
+
+  it('treats H as a literal character while the search input is open', async () => {
+    const { stdin, store } = await mount();
+    stdin.write('\r');
+    await flush();
+    stdin.write('/');
+    await flush();
+    stdin.write('H');
+    await flush();
+
+    expect(store.getSnapshot().search.query).toBe('H');
+    expect(store.getSnapshot().currentView.kind).toBe('jobs');
+  });
+
+  it('swallows H while a confirmation is pending', async () => {
+    const { stdin, store } = await mount();
+    stdin.write('\r');
+    await flush();
+    stdin.write('4');
+    await flush();
+    stdin.write('D');
+    await flush();
+    expect(store.getSnapshot().confirmDeleteJobId).toBe('failed-1');
+
+    stdin.write('H');
+    await flush();
+    expect(store.getSnapshot().confirmDeleteJobId).toBe('failed-1');
+    expect(store.getSnapshot().currentView.kind).toBe('jobs');
+  });
+
   it('filters in the job view and switches status with numeric keys', async () => {
     const { stdin, store } = await mount();
     stdin.write('\r');

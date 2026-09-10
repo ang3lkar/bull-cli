@@ -40,6 +40,11 @@ const TAB_ORDER: JobStatus[] = ['delayed', 'waiting', 'active', 'failed', 'compl
  *   lists it under "Job list (focused)", but nothing else in the sidebar's
  *   keymap conflicts with it, and requiring an extra `Tab` press first
  *   would be a needless speed bump.
+ * - **`H` jumps to the queue dashboard from any depth** and, like `r`, is
+ *   handled above the view switch so it works from both the job list and
+ *   job detail. It sits *below* the search and confirmation gates, so it
+ *   stays a literal character while typing a filter and is swallowed by a
+ *   pending confirmation.
  * - **`q` is context-sensitive, not a global override**: it quits from the
  *   global and detail-view states, but is ignored while a drain
  *   confirmation is pending (only `y`/`Y`/`n`/`N`/`Escape` are honored
@@ -80,6 +85,11 @@ export function useKeymap(
 
     if (input === 'r') {
       void store.refresh();
+      return;
+    }
+
+    if (input === 'H') {
+      store.popToQueues();
       return;
     }
 
