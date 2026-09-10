@@ -145,6 +145,8 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
                 width={contentWidth}
                 counts={snapshot.tabCounts}
                 loading={snapshot.jobsLoading}
+                hiddenBySearch={snapshot.jobsHiddenBySearch}
+                searchQuery={snapshot.search.query}
               />
             </Box>
           </>

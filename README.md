@@ -158,12 +158,14 @@ Only one view is visible at a time. `Enter` drills into the selected row; `Escap
 the previous screen. Opening a queue starts on the **Delayed** status; use the status shortcuts to
 choose another bucket. Data refreshes automatically every 3 seconds, or immediately on `r`.
 
-Search (`/`) filters the job list by ID or name as you type. `Enter` accepts the current filter and
-closes the search input (the filtered list stays applied); `Escape` clears the filter entirely and
-returns to the full list.
+Search (`/`) filters the current page of the job list by ID or name as you type. `Enter` accepts the
+current filter and closes the search input (the filtered list stays applied); `Escape` clears the
+filter entirely and returns to the full list.
 
 When a status has no jobs, the list shows a contextual empty state instead of pagination and points
-to populated status buckets with their numeric shortcuts.
+to populated status buckets with their numeric shortcuts. An empty list that is *not* an empty
+status is labelled as such: while a page is still being fetched it says so rather than reporting
+zero jobs, and a search that matches nothing names the query instead of the status.
 
 ## Keyboard bindings
 

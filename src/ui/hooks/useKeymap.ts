@@ -20,18 +20,22 @@ const TAB_ORDER: JobStatus[] = ['delayed', 'waiting', 'active', 'failed', 'compl
  * Latitude decisions the spec leaves open (documented here rather than left
  * implicit):
  *
- * - **Search `Enter` vs `Escape`**: `Escape` clears the query and returns to
- *   the full list (explicit in the spec). `Enter` is unspecified — here it
- *   accepts the current query and closes just the input line
- *   (`store.acceptSearch()`), keeping the list filtered, so a user can type
- *   a filter, hit Enter to get the input out of the way, and keep browsing
- *   without the query being wiped out immediately after.
- * - **Global `Escape`** (reached only when nothing above claims it — no
- *   active search input, no pending drain confirmation, no open detail view) is
- *   routed to `store.closeSearch()` rather than being a true no-op: this is
- *   the only way to clear an "accepted" filter (see above) without
- *   switching queue/tab, and `closeSearch()` is already a safe no-op when
- *   there's nothing to clear.
+ * - **Search `Enter` vs `Escape`**: while the search input is open,
+ *   `Escape` clears the query and returns to the full list (explicit in the
+ *   spec). `Enter` is unspecified — here it accepts the current query and
+ *   closes just the input line (`store.acceptSearch()`), keeping the list
+ *   filtered, so a user can type a filter, hit Enter to get the input out
+ *   of the way, and keep browsing without the query being wiped out
+ *   immediately after.
+ * - **`Escape` once a filter is accepted** belongs to the view, not to the
+ *   search: with the input closed, the jobs and detail views both take it
+ *   as `popView()`, and an accepted filter stays applied across that pop
+ *   (`popView` doesn't reset search state). Clearing such a filter in place
+ *   therefore means reopening the input with `/` first, which is what puts
+ *   `Escape` back in reach of `closeSearch()` — the wording of
+ *   `JobTable`'s no-matches state points at exactly that path. `SearchBar`
+ *   renders the lingering query whenever it's non-empty, so a filter that
+ *   outlives its input is never invisible.
  * - **`/` opens search regardless of focus** (sidebar or jobs). The spec
  *   lists it under "Job list (focused)", but nothing else in the sidebar's
  *   keymap conflicts with it, and requiring an extra `Tab` press first

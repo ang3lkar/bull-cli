@@ -1259,6 +1259,92 @@ describe('DashboardStore: connection', () => {
   });
 });
 
+describe('DashboardStore: jobsHiddenBySearch', () => {
+  const stateWithThreeJobs = (): FakeState => ({
+    queues: [makeQueue('a')],
+    jobs: {
+      [jobKey('a', 'active')]: [
+        makeJob('1', 'sendEmail'),
+        makeJob('2', 'sendSms'),
+        makeJob('3', 'sendPush'),
+      ],
+    },
+    details: {},
+  });
+
+  it('is 0 with no query applied', async () => {
+    const store = track(
+      new DashboardStore(createFakeDeps(stateWithThreeJobs()), { redisUrl: 'redis://x' }),
+    );
+    await store.refresh();
+    expect(store.getSnapshot().visibleJobs).toHaveLength(3);
+    expect(store.getSnapshot().jobsHiddenBySearch).toBe(0);
+  });
+
+  it('counts the rows a partially-matching query hides', async () => {
+    const store = track(
+      new DashboardStore(createFakeDeps(stateWithThreeJobs()), { redisUrl: 'redis://x' }),
+    );
+    await store.refresh();
+
+    store.openSearch();
+    store.setSearchQuery('sendS');
+    expect(store.getSnapshot().visibleJobs).toHaveLength(1);
+    expect(store.getSnapshot().jobsHiddenBySearch).toBe(2);
+  });
+
+  it('counts every row when the query matches nothing, which is what makes the list blank', async () => {
+    const store = track(
+      new DashboardStore(createFakeDeps(stateWithThreeJobs()), { redisUrl: 'redis://x' }),
+    );
+    await store.refresh();
+
+    store.openSearch();
+    store.setSearchQuery('nope');
+    expect(store.getSnapshot().visibleJobs).toHaveLength(0);
+    expect(store.getSnapshot().jobsHiddenBySearch).toBe(3);
+  });
+
+  it('stays 0 when the status is genuinely empty, query or not', async () => {
+    const state: FakeState = { queues: [makeQueue('a')], jobs: {}, details: {} };
+    const store = track(new DashboardStore(createFakeDeps(state), { redisUrl: 'redis://x' }));
+    await store.refresh();
+
+    expect(store.getSnapshot().jobsHiddenBySearch).toBe(0);
+    store.openSearch();
+    store.setSearchQuery('nope');
+    // Nothing was hidden because there was nothing there — the empty status,
+    // not the query, is why the list has no rows.
+    expect(store.getSnapshot().jobsHiddenBySearch).toBe(0);
+  });
+
+  it('treats a whitespace-only query as no filter', async () => {
+    const store = track(
+      new DashboardStore(createFakeDeps(stateWithThreeJobs()), { redisUrl: 'redis://x' }),
+    );
+    await store.refresh();
+
+    store.openSearch();
+    store.setSearchQuery('   ');
+    expect(store.getSnapshot().visibleJobs).toHaveLength(3);
+    expect(store.getSnapshot().jobsHiddenBySearch).toBe(0);
+  });
+
+  it('resets to 0 once the query is cleared', async () => {
+    const store = track(
+      new DashboardStore(createFakeDeps(stateWithThreeJobs()), { redisUrl: 'redis://x' }),
+    );
+    await store.refresh();
+
+    store.openSearch();
+    store.setSearchQuery('nope');
+    expect(store.getSnapshot().jobsHiddenBySearch).toBe(3);
+
+    store.closeSearch();
+    expect(store.getSnapshot().jobsHiddenBySearch).toBe(0);
+  });
+});
+
 describe('DashboardStore: jobsLoading', () => {
   const stateWithTwoTabs = (): FakeState => ({
     queues: [makeQueue('a'), makeQueue('b')],

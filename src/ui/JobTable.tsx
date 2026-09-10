@@ -20,6 +20,14 @@ export interface JobTableProps {
    * tab row's own count right above it.
    */
   loading?: boolean;
+  /**
+   * How many rows on this page the active search hides (see
+   * `DashboardSnapshot.jobsHiddenBySearch`). Non-zero with an empty `jobs`
+   * means the search is why the table is blank, not the status.
+   */
+  hiddenBySearch?: number;
+  /** The applied search query, quoted back in the no-matches state. */
+  searchQuery?: string;
   /** @deprecated Single-focus views always render the selected row as focused. */
   focused?: boolean;
   /** @deprecated Kept for compatibility with older callers. */
@@ -153,6 +161,34 @@ function EmptyJobs({
   );
 }
 
+function NoSearchMatches({
+  status,
+  query,
+  hidden,
+}: {
+  status: JobStatus;
+  query: string;
+  hidden: number;
+}) {
+  return (
+    <Box flexDirection="column" alignItems="center" marginTop={2}>
+      <Text color={statusColor(status)}>◌ No matches for "{query}"</Text>
+      <Text dimColor>
+        {hidden === 1
+          ? `The one ${status} job on this page doesn't match.`
+          : `None of the ${hidden} ${status} jobs on this page match.`}
+      </Text>
+      {/*
+        Not a bare "press Esc": in the jobs view Escape pops back to the
+        queue list (`useKeymap`'s `handleJobsInput`) and leaves the query
+        applied. Reopening the input with `/` is what puts Escape back in
+        reach of `closeSearch`.
+      */}
+      <Text dimColor>Press / then Esc to clear it.</Text>
+    </Box>
+  );
+}
+
 function LoadingJobs({ status }: { status: JobStatus }) {
   return (
     <Box flexDirection="column" alignItems="center" marginTop={2}>
@@ -171,6 +207,8 @@ export function JobTable({
   width,
   counts,
   loading = false,
+  hiddenBySearch = 0,
+  searchQuery = '',
 }: JobTableProps) {
   return (
     <Box flexDirection="column">
@@ -184,8 +222,14 @@ export function JobTable({
         <Text bold>{headerLine(width)}</Text>
       </Box>
       {jobs.length === 0 ? (
+        // Order matters: a page that hasn't arrived yet can't be said to
+        // match nothing, so loading wins over the no-matches state, which
+        // in turn wins over "this status is empty" (it isn't — the query is
+        // just hiding every row).
         loading ? (
           <LoadingJobs status={status} />
+        ) : hiddenBySearch > 0 ? (
+          <NoSearchMatches status={status} query={searchQuery} hidden={hiddenBySearch} />
         ) : (
           <EmptyJobs status={status} counts={counts} />
         )

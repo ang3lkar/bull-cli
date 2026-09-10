@@ -96,6 +96,59 @@ describe('JobTable', () => {
     expect(lastFrame()).not.toContain('Page');
   });
 
+  it('explains that the search is hiding every row, not that the status is empty', () => {
+    const { lastFrame } = render(
+      <JobTable
+        jobs={[]}
+        status="failed"
+        counts={{ active: 0, waiting: 0, completed: 0, failed: 3, delayed: 0 }}
+        selectedJobId={null}
+        page={0}
+        pageCount={1}
+        hiddenBySearch={3}
+        searchQuery="nope"
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('No matches for "nope"');
+    expect(frame).toContain('None of the 3 failed jobs on this page match.');
+    expect(frame).toContain('Press / then Esc to clear it.');
+    expect(frame).not.toContain('This queue has no jobs in this status.');
+  });
+
+  it('keeps the no-matches wording singular for a one-row page', () => {
+    const { lastFrame } = render(
+      <JobTable
+        jobs={[]}
+        status="active"
+        selectedJobId={null}
+        page={0}
+        pageCount={1}
+        hiddenBySearch={1}
+        searchQuery="zzz"
+      />,
+    );
+    expect(lastFrame()).toContain("The one active job on this page doesn't match.");
+  });
+
+  it('prefers the loading line over the no-matches state, since an unloaded page matches nothing yet', () => {
+    const { lastFrame } = render(
+      <JobTable
+        jobs={[]}
+        status="failed"
+        selectedJobId={null}
+        page={0}
+        pageCount={1}
+        loading
+        hiddenBySearch={3}
+        searchQuery="nope"
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Loading failed jobs…');
+    expect(frame).not.toContain('No matches for');
+  });
+
   it('shows a loading line rather than the empty state while the page is still being fetched', () => {
     const { lastFrame } = render(
       <JobTable

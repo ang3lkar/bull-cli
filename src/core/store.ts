@@ -112,6 +112,16 @@ export interface DashboardSnapshot {
   search: { active: boolean; query: string };
   /** Jobs on the current page after the search filter is applied. */
   visibleJobs: JobSummary[];
+  /**
+   * How many jobs on the current page the active search query hides
+   * (`jobPage.jobs.length - visibleJobs.length`), `0` when no query is
+   * applied or nothing is filtered out. A non-zero value with an empty
+   * `visibleJobs` is the third way the job list can have no rows: the
+   * status isn't empty and the page isn't still loading — the query just
+   * matches none of what's on it. Bounded by the page size, since
+   * `filterJobs` only ever sees one page.
+   */
+  jobsHiddenBySearch: number;
   detail: JobDetail | null;
   detailLoading: boolean;
   /**
@@ -264,6 +274,9 @@ export class DashboardStore {
 
   private buildSnapshot(): DashboardSnapshot {
     const jobs = this.jobPage?.jobs ?? [];
+    // Filtered once, then used for both `visibleJobs` and the hidden count,
+    // so the two can never disagree about what the query matches.
+    const visibleJobs = filterJobs(jobs, this.searchQuery);
     const queueCounts = Object.fromEntries(this.queueCountsByName) as Record<string, QueueCounts>;
     return Object.freeze({
       connection: this.connection,
@@ -282,7 +295,8 @@ export class DashboardStore {
           : null,
       selectedJobId: this.selectedJobId,
       search: { active: this.searchActive, query: this.searchQuery },
-      visibleJobs: filterJobs(jobs, this.searchQuery),
+      visibleJobs: visibleJobs,
+      jobsHiddenBySearch: jobs.length - visibleJobs.length,
       detail: this.detail,
       detailLoading: this.detailLoading,
       jobsLoading: this.jobsLoading,

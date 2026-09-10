@@ -262,6 +262,74 @@ describe('App: loading a job list', () => {
   });
 });
 
+describe('App: a search that matches nothing', () => {
+  it('blames the query rather than claiming the status is empty', async () => {
+    const { stdin, lastFrame } = await mount();
+    stdin.write('\r');
+    await flush();
+    expect(lastFrame()).toContain('delayed-1');
+
+    stdin.write('/');
+    await flush();
+    for (const char of 'zzz') {
+      stdin.write(char);
+      await flush();
+    }
+    stdin.write('\r'); // accept: the input line closes, the filter stays on
+    await flush();
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('/ zzz (filtered)');
+    expect(frame).toContain('No matches for "zzz"');
+    expect(frame).toContain("The one delayed job on this page doesn't match.");
+    expect(frame).not.toContain('No delayed jobs');
+    expect(frame).not.toContain('delayed-1');
+  });
+
+  it('goes back to the full list via the / then Esc path the message points to', async () => {
+    const { stdin, lastFrame } = await mount();
+    stdin.write('\r');
+    await flush();
+
+    stdin.write('/');
+    await flush();
+    stdin.write('z');
+    await flush();
+    stdin.write('\r'); // accept
+    await flush();
+    expect(lastFrame()).toContain('No matches for "z"');
+    expect(lastFrame()).toContain('Press / then Esc to clear it.');
+
+    stdin.write('/'); // reopen the input, which is what puts Esc in reach
+    await flush();
+    stdin.write('\u001B');
+    await flush();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('delayed-1');
+    expect(frame).not.toContain('No matches for');
+  });
+
+  it('leaves the filter applied when Escape pops back to the queue list instead', async () => {
+    const { stdin, lastFrame, store } = await mount();
+    stdin.write('\r');
+    await flush();
+    stdin.write('/');
+    await flush();
+    stdin.write('z');
+    await flush();
+    stdin.write('\r');
+    await flush();
+
+    // Escape here is `popView`, not `closeSearch` — hence the message's
+    // wording. The query survives, and `SearchBar` keeps showing it.
+    stdin.write('\u001B');
+    await flush();
+    expect(store.getSnapshot().currentView).toEqual({ kind: 'queues' });
+    expect(store.getSnapshot().search.query).toBe('z');
+    expect(lastFrame()).toContain('emailQ');
+  });
+});
+
 describe('App: contextual actions', () => {
   it('confirms deletion from the job view before acting', async () => {
     const { deps, stdin, store } = await mount();
