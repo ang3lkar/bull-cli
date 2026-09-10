@@ -49,7 +49,8 @@ function shortcutsFor(view: NavigationView | undefined, status: JobStatus | unde
   if (view?.kind === 'jobs') {
     return [
       { key: '↑/↓', label: 'Move' },
-      { key: '1-5', label: 'Status' },
+      { key: '←/→', label: 'Status' },
+      { key: '1-5', label: 'Jump' },
       { key: 'b/n', label: 'Page' },
       { key: 'Enter', label: 'Detail' },
       { key: '/', label: 'Filter' },

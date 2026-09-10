@@ -49,6 +49,11 @@ const TAB_ORDER: JobStatus[] = ['delayed', 'waiting', 'active', 'failed', 'compl
  *   global and detail-view states, but is ignored while a drain
  *   confirmation is pending (only `y`/`Y`/`n`/`N`/`Escape` are honored
  *   there) and is treated as a literal character while typing in search.
+ * - **`←`/`→` step the status tabs** in the job list, alongside the `1`-`5`
+ *   jumps: the vertical arrows move within a status, the horizontal ones
+ *   move between them. They stay unbound in job detail, which has no tab
+ *   row, and — being in `NAVIGATION_KEYS` — are inert while the search
+ *   input is open rather than switching tabs out from under a filter.
  * - **Tab/queue navigation does not wrap** at the ends (clamped), matching
  *   the store's own pagination/job-selection clamping behavior elsewhere.
  */
@@ -237,6 +242,14 @@ function handleJobsInput(store: DashboardStore, input: string, key: Key): void {
   }
   if (key.downArrow) {
     store.selectNextJob();
+    return;
+  }
+  if (key.leftArrow) {
+    store.selectAdjacentTab(-1);
+    return;
+  }
+  if (key.rightArrow) {
+    store.selectAdjacentTab(1);
     return;
   }
   if (input >= '1' && input <= '5') {

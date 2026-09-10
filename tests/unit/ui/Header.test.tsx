@@ -21,6 +21,7 @@ describe('Header', () => {
     );
     expect(lastFrame()).toContain('Quit');
     expect(lastFrame()).toContain('1-5');
+    expect(lastFrame()).toContain('←/→');
     expect(lastFrame()).toContain('Status');
     expect(lastFrame()).toContain('Duplicate');
     expect(lastFrame()).toContain('Refresh');

@@ -1010,6 +1010,82 @@ describe('DashboardStore: navigation (tab/queue/page)', () => {
     expect(store.getSnapshot().jobPage?.jobs).toEqual([makeJob('1', 'j1')]);
   });
 
+  it('selectAdjacentTab walks the lifecycle order in both directions', async () => {
+    const state: FakeState = { queues: [makeQueue('a')], jobs: {}, details: {} };
+    const store = track(new DashboardStore(createFakeDeps(state), { redisUrl: 'redis://x' }));
+    await store.refresh();
+    store.selectTab('delayed');
+    await flush();
+
+    const forwards: string[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      store.selectAdjacentTab(1);
+      await flush();
+      forwards.push(store.getSnapshot().tab);
+    }
+    expect(forwards).toEqual(['waiting', 'active', 'failed', 'completed']);
+
+    const backwards: string[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      store.selectAdjacentTab(-1);
+      await flush();
+      backwards.push(store.getSnapshot().tab);
+    }
+    expect(backwards).toEqual(['failed', 'active', 'waiting', 'delayed']);
+  });
+
+  it('selectAdjacentTab clamps at both ends instead of wrapping', async () => {
+    const state: FakeState = { queues: [makeQueue('a')], jobs: {}, details: {} };
+    const store = track(new DashboardStore(createFakeDeps(state), { redisUrl: 'redis://x' }));
+    await store.refresh();
+    store.selectTab('delayed');
+    await flush();
+
+    let notified = 0;
+    store.subscribe(() => {
+      notified += 1;
+    });
+
+    // First tab: stepping back is a true no-op, not a wrap to Completed.
+    store.selectAdjacentTab(-1);
+    expect(store.getSnapshot().tab).toBe('delayed');
+    expect(notified).toBe(0);
+
+    store.selectTab('completed');
+    await flush();
+    notified = 0;
+
+    // Last tab: stepping on does not wrap round to Delayed.
+    store.selectAdjacentTab(1);
+    expect(store.getSnapshot().tab).toBe('completed');
+    expect(notified).toBe(0);
+  });
+
+  it('selectAdjacentTab resets page and search, exactly as the 1-5 keys do', async () => {
+    const jobs = Array.from({ length: 25 }, (_, i) => makeJob(String(i), `job-${i}`));
+    const state: FakeState = {
+      queues: [makeQueue('a')],
+      jobs: { [jobKey('a', 'delayed')]: jobs },
+      details: {},
+    };
+    const store = track(new DashboardStore(createFakeDeps(state), { redisUrl: 'redis://x' }));
+    await store.refresh();
+    store.selectTab('delayed');
+    await flush();
+    store.nextPage();
+    await flush();
+    store.openSearch();
+    store.setSearchQuery('job-1');
+    expect(store.getSnapshot().page).toBe(1);
+
+    store.selectAdjacentTab(1);
+
+    expect(store.getSnapshot().tab).toBe('waiting');
+    expect(store.getSnapshot().page).toBe(0);
+    expect(store.getSnapshot().selectedJobId).toBeNull();
+    expect(store.getSnapshot().search).toEqual({ active: false, query: '' });
+  });
+
   it('paginates and clamps at both ends', async () => {
     const jobs = Array.from({ length: 25 }, (_, i) => makeJob(String(i), `job-${i}`));
     const state: FakeState = {

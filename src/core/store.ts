@@ -756,6 +756,25 @@ export class DashboardStore {
     void this.refresh();
   }
 
+  /**
+   * Steps one status tab along the job lifecycle — `1` forwards (towards
+   * Completed), `-1` backwards — for the job list's `→`/`←` keys. Clamped
+   * at both ends rather than wrapping, matching queue navigation and
+   * pagination.
+   *
+   * Delegates to `selectTab`, so a press at either end is a true no-op
+   * (same tab in, early return, no emit and no refresh) and a real move
+   * gets the identical page/selection/filter reset the `1`-`5` keys give.
+   */
+  selectAdjacentTab(direction: 1 | -1): void {
+    const currentIndex = TAB_ORDER.indexOf(this.tab);
+    const nextIndex = Math.min(
+      Math.max((currentIndex < 0 ? 0 : currentIndex) + direction, 0),
+      TAB_ORDER.length - 1,
+    );
+    this.selectTab(TAB_ORDER[nextIndex]);
+  }
+
   private resetQueueOrTabSwitch(): void {
     this.page = 0;
     this.jobPage = null;

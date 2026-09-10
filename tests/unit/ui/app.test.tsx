@@ -185,6 +185,58 @@ describe('App: stack navigation', () => {
     expect(store.getSnapshot().currentView.kind).toBe('queues');
   });
 
+  it('steps the status tabs with the left and right arrows, clamped at the ends', async () => {
+    const { stdin, lastFrame, store } = await mount();
+    stdin.write('\r');
+    await flush();
+    expect(store.getSnapshot().tab).toBe('delayed');
+
+    stdin.write('\u001B[C'); // right
+    await flush();
+    expect(store.getSnapshot().tab).toBe('waiting');
+    expect(lastFrame()).toContain('[Waiting]');
+    expect(store.getSnapshot().selectedJobId).toBe('waiting-1');
+
+    stdin.write('\u001B[D'); // left
+    await flush();
+    expect(store.getSnapshot().tab).toBe('delayed');
+
+    // Delayed is the first tab: left again stays put rather than wrapping.
+    stdin.write('\u001B[D');
+    await flush();
+    expect(store.getSnapshot().tab).toBe('delayed');
+    expect(lastFrame()).toContain('[Delayed]');
+  });
+
+  it('leaves the arrows alone in job detail, which has no tab row', async () => {
+    const { stdin, store } = await mount();
+    stdin.write('\r');
+    await flush();
+    stdin.write('3');
+    await flush();
+    stdin.write('\r');
+    await flush();
+    expect(store.getSnapshot().currentView.kind).toBe('detail');
+
+    stdin.write('\u001B[C');
+    await flush();
+    expect(store.getSnapshot().tab).toBe('active');
+    expect(store.getSnapshot().currentView.kind).toBe('detail');
+  });
+
+  it('does not switch tabs out from under an open search input', async () => {
+    const { stdin, store } = await mount();
+    stdin.write('\r');
+    await flush();
+    stdin.write('/');
+    await flush();
+    stdin.write('\u001B[C');
+    await flush();
+
+    expect(store.getSnapshot().tab).toBe('delayed');
+    expect(store.getSnapshot().search).toEqual({ active: true, query: '' });
+  });
+
   it('jumps home from the job list and from job detail with H', async () => {
     const { stdin, lastFrame, store } = await mount();
     stdin.write('\r');

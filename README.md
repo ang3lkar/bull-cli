@@ -204,6 +204,7 @@ zero jobs, and a search that matches nothing names the query instead of the stat
 | Key | Action |
 |---|---|
 | `↑` / `↓` | Navigate jobs |
+| `←` / `→` | Previous / next status tab (clamped at Delayed and Completed) |
 | `1` | Delayed jobs |
 | `2` | Waiting jobs |
 | `3` | Active jobs |
