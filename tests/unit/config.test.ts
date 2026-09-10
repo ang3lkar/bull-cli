@@ -6,6 +6,7 @@ import {
   resolvePrefix,
   resolveRedisUrl,
   resolveRefreshIntervalMs,
+  resolveRefreshTimeoutMs,
   userConfigPath,
 } from '../../src/config.js';
 
@@ -252,5 +253,67 @@ describe('resolveRefreshIntervalMs', () => {
 
   it('falls back to the default when both configs are present but neither sets the key', () => {
     expect(resolveRefreshIntervalMs({}, {})).toBe(3000);
+  });
+});
+
+describe('parseConfigFile: refreshTimeoutMs', () => {
+  it('parses a valid refreshTimeoutMs', () => {
+    expect(parseConfigFile('{"refreshTimeoutMs": 15000}', 'config.json')).toEqual({
+      refreshTimeoutMs: 15000,
+    });
+  });
+
+  it('parses both keys together without one clobbering the other', () => {
+    expect(
+      parseConfigFile('{"refreshIntervalMs": 5000, "refreshTimeoutMs": 15000}', 'config.json'),
+    ).toEqual({ refreshIntervalMs: 5000, refreshTimeoutMs: 15000 });
+  });
+
+  it('names refreshTimeoutMs (not refreshIntervalMs) in its type error', () => {
+    expect(() => parseConfigFile('{"refreshTimeoutMs": "15000"}', 'config.json')).toThrow(
+      /"refreshTimeoutMs" must be an integer/,
+    );
+  });
+
+  it('names refreshTimeoutMs in its range error', () => {
+    expect(() => parseConfigFile('{"refreshTimeoutMs": 5}', 'config.json')).toThrow(
+      /"refreshTimeoutMs" must be >= 250, got: 5 — did you mean 5000 \(5 seconds\)\?/,
+    );
+  });
+
+  it('suggests refreshTimeoutMs for a near-miss typo', () => {
+    expect(() => parseConfigFile('{"refreshTimeoutMS": 15000}', 'config.json')).toThrow(
+      /did you mean "refreshTimeoutMs"/,
+    );
+  });
+
+  it('accepts exactly the floor value', () => {
+    expect(parseConfigFile('{"refreshTimeoutMs": 250}', 'config.json')).toEqual({
+      refreshTimeoutMs: 250,
+    });
+  });
+});
+
+describe('resolveRefreshTimeoutMs', () => {
+  it('defaults to 5000 when neither config is present', () => {
+    expect(resolveRefreshTimeoutMs(null, null)).toBe(5000);
+  });
+
+  it('uses the user config when only it is present', () => {
+    expect(resolveRefreshTimeoutMs({ refreshTimeoutMs: 20000 }, null)).toBe(20000);
+  });
+
+  it('uses the project config when only it is present', () => {
+    expect(resolveRefreshTimeoutMs(null, { refreshTimeoutMs: 12000 })).toBe(12000);
+  });
+
+  it('prefers the project config over the user config', () => {
+    expect(resolveRefreshTimeoutMs({ refreshTimeoutMs: 20000 }, { refreshTimeoutMs: 12000 })).toBe(
+      12000,
+    );
+  });
+
+  it('falls back to the default when both configs are present but neither sets the key', () => {
+    expect(resolveRefreshTimeoutMs({}, {})).toBe(5000);
   });
 });

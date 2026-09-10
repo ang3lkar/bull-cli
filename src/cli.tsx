@@ -10,6 +10,7 @@ import {
   resolvePrefix,
   resolveRedisUrl,
   resolveRefreshIntervalMs,
+  resolveRefreshTimeoutMs,
   type UserConfig,
   userConfigPath,
 } from './config.js';
@@ -119,6 +120,7 @@ async function main(): Promise<void> {
   const userConfig = loadConfigFile(userConfigPath(process.env, homedir()));
   const projectConfig = loadConfigFile(projectConfigPath(process.cwd()));
   const refreshIntervalMs = resolveRefreshIntervalMs(userConfig, projectConfig);
+  const refreshTimeoutMs = resolveRefreshTimeoutMs(userConfig, projectConfig);
 
   await runJsonOutputMode(redisUrl, prefix);
 
@@ -152,7 +154,7 @@ async function main(): Promise<void> {
   process.on('uncaughtException', onFatal);
   process.on('unhandledRejection', onFatal);
 
-  const app = createApp(redisUrl, prefix, refreshIntervalMs);
+  const app = createApp(redisUrl, prefix, refreshIntervalMs, refreshTimeoutMs);
 
   let shuttingDown = false;
 

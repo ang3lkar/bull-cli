@@ -384,7 +384,12 @@ export class DashboardStore {
         this.connection = {
           state: 'error',
           url: this.redisUrl,
-          message: 'Refresh timed out — Redis may be unreachable',
+          // Names the bound that was hit and the knob that moves it: a
+          // reachable-but-distant Redis (a tunnelled/remote instance, where
+          // discovery's round trips add up) hits this exactly like an
+          // unreachable one does, and "may be unreachable" alone sends the
+          // user hunting for a connection problem that isn't there.
+          message: `Refresh timed out after ${this.refreshTimeoutMs}ms — Redis may be unreachable, or slow enough to need a larger "refreshTimeoutMs" in your bull-cli config`,
         };
       }
     } catch (err) {

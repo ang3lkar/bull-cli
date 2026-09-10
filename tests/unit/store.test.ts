@@ -327,7 +327,8 @@ describe('DashboardStore: refresh', () => {
     expect(snap.connection).toEqual({
       state: 'error',
       url: 'redis://x',
-      message: 'Refresh timed out — Redis may be unreachable',
+      message:
+        'Refresh timed out after 50ms — Redis may be unreachable, or slow enough to need a larger "refreshTimeoutMs" in your bull-cli config',
     });
   });
 

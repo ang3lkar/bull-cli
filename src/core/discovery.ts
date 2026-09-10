@@ -3,7 +3,18 @@ import type { QueueInfo } from './types.js';
 
 /** BullMQ writes one `<prefix>:<queue>:meta` hash per queue; never use `KEYS` in production code. */
 const META_SUFFIX = ':meta';
-const SCAN_COUNT = 100;
+/**
+ * Keys examined per `SCAN` call. Discovery's cost is dominated by round
+ * trips, not by server-side work: the cursor loop is sequential, so it makes
+ * roughly `dbsize / SCAN_COUNT` round trips regardless of how many keys
+ * actually match. On a remote instance reached through a tunnel (`kubectl
+ * port-forward`, SSH) an ~90ms RTT turns a shared 7k-key database into ~74
+ * round trips and over six seconds — past `DashboardStore`'s refresh
+ * timeout, so the dashboard gives up before discovery ever returns. 1000
+ * keeps that same database to ~8 round trips while staying well inside the
+ * per-call work Redis is happy to do without blocking other clients.
+ */
+const SCAN_COUNT = 1000;
 
 /**
  * Derives a queue name from a `<prefix>:<name>:meta` key by stripping exactly

@@ -96,7 +96,7 @@ in scrollback.
 
 Everything works with zero configuration. An optional JSONC (JSON with `//` and `/* */` comments,
 and trailing commas allowed) config file lets you override defaults that aren't worth a CLI flag —
-currently just the dashboard's auto-refresh interval.
+currently the dashboard's auto-refresh interval and its per-refresh timeout.
 
 Two locations are checked, both optional; if a project file is present, it's merged over the user
 file key-by-key:
@@ -111,6 +111,17 @@ file key-by-key:
   // How often the dashboard polls Redis for updates, in milliseconds.
   // Must be an integer >= 250. Defaults to 3000.
   "refreshIntervalMs": 3000,
+
+  // How long a single refresh cycle may run before it's abandoned and the
+  // connection is shown as errored, in milliseconds.
+  // Must be an integer >= 250. Defaults to 5000.
+  //
+  // Raise this for a Redis reached over a high-latency link (a tunnelled or
+  // remote instance): queue discovery walks the keyspace with SCAN, so its
+  // cost is round trips × latency, and on a large shared database it can
+  // legitimately exceed the default while Redis is perfectly reachable.
+  // Keep it comfortably above "refreshIntervalMs".
+  "refreshTimeoutMs": 5000,
 }
 ```
 

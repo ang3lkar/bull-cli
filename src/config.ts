@@ -6,7 +6,9 @@ const DEFAULT_REDIS_PORT = 6379;
 const DEFAULT_REDIS_DB = 0;
 export const DEFAULT_BULLMQ_PREFIX = 'bull';
 export const DEFAULT_REFRESH_INTERVAL_MS = 3000;
+export const DEFAULT_REFRESH_TIMEOUT_MS = 5000;
 const MIN_REFRESH_INTERVAL_MS = 250;
+const MIN_REFRESH_TIMEOUT_MS = 250;
 
 /** Connection options accepted by both `ioredis` and `bullmq`'s `Queue`/`Worker`. */
 export interface ConnectionOpts {
@@ -98,9 +100,29 @@ export function connectionFromUrl(url: string): ConnectionOpts {
 /** Settings the optional JSONC config files may override. Every field is optional — an empty file is valid. */
 export interface UserConfig {
   refreshIntervalMs?: number;
+  /**
+   * How long a single refresh cycle may run before the dashboard abandons
+   * it. Worth raising for a Redis instance reached over a high-latency link
+   * (a tunnelled/remote instance), where discovery legitimately takes longer
+   * than the default without Redis being unreachable at all.
+   */
+  refreshTimeoutMs?: number;
 }
 
-const KNOWN_CONFIG_KEYS = ['refreshIntervalMs'] as const;
+/**
+ * Every recognized config key with its validation floor. The parser is
+ * driven off this table rather than special-casing one key, so adding a
+ * setting here is enough to make it parse, validate, and appear in the
+ * "did you mean" suggestions.
+ */
+const CONFIG_KEY_SPECS = {
+  refreshIntervalMs: { min: MIN_REFRESH_INTERVAL_MS },
+  refreshTimeoutMs: { min: MIN_REFRESH_TIMEOUT_MS },
+} as const;
+
+type ConfigKey = keyof typeof CONFIG_KEY_SPECS;
+
+const KNOWN_CONFIG_KEYS = Object.keys(CONFIG_KEY_SPECS) as readonly ConfigKey[];
 
 /**
  * Thrown for any problem with a config file the user can actually fix
@@ -169,19 +191,21 @@ export function parseConfigFile(source: string, filePath: string): UserConfig {
         `${filePath}: unknown config key "${key}"${suggestion ? ` — did you mean "${suggestion}"?` : ''}`,
       );
     }
+    const configKey = key as ConfigKey;
+    const { min } = CONFIG_KEY_SPECS[configKey];
 
     if (typeof value !== 'number' || !Number.isInteger(value)) {
       throw new ConfigError(
-        `${filePath}: "refreshIntervalMs" must be an integer, got: ${JSON.stringify(value)}`,
+        `${filePath}: "${configKey}" must be an integer, got: ${JSON.stringify(value)}`,
       );
     }
-    if (value < MIN_REFRESH_INTERVAL_MS) {
+    if (value < min) {
       const secondsHint = value > 0 ? ` — did you mean ${value * 1000} (${value} seconds)?` : '';
       throw new ConfigError(
-        `${filePath}: "refreshIntervalMs" must be >= ${MIN_REFRESH_INTERVAL_MS}, got: ${value}${secondsHint}`,
+        `${filePath}: "${configKey}" must be >= ${min}, got: ${value}${secondsHint}`,
       );
     }
-    result.refreshIntervalMs = value;
+    result[configKey] = value;
   }
   return result;
 }
@@ -212,5 +236,18 @@ export function resolveRefreshIntervalMs(
 ): number {
   return (
     projectConfig?.refreshIntervalMs ?? userConfig?.refreshIntervalMs ?? DEFAULT_REFRESH_INTERVAL_MS
+  );
+}
+
+/**
+ * Resolves the effective per-refresh timeout: project config overrides user
+ * config overrides the default. Either config may be `null` (file absent).
+ */
+export function resolveRefreshTimeoutMs(
+  userConfig: UserConfig | null,
+  projectConfig: UserConfig | null,
+): number {
+  return (
+    projectConfig?.refreshTimeoutMs ?? userConfig?.refreshTimeoutMs ?? DEFAULT_REFRESH_TIMEOUT_MS
   );
 }
