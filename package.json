@@ -1,5 +1,5 @@
 {
-  "name": "bull-cli",
+  "name": "@angelkar/bull-cli",
   "version": "0.1.0",
   "type": "module",
   "description": "A terminal dashboard (TUI) for BullMQ job queues.",
@@ -27,6 +27,9 @@
   },
   "bin": {
     "bull-cli": "dist/cli.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "dist"

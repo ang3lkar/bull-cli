@@ -7,7 +7,7 @@ and job details without leaving the shell.
 ## Install
 
 ```
-npm install -g bull-cli
+npm install -g @angelkar/bull-cli
 ```
 
 Requires Node.js >= 20 and a reachable Redis instance with one or more BullMQ queues (auto-discovered
