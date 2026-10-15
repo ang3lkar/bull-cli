@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bull-cli</title>
+<meta name="description" content="A terminal dashboard (TUI) for BullMQ job queues. Browse queues, inspect jobs, retry, promote, pause and drain without leaving the shell.">
+<meta property="og:title" content="bull-cli">
+<meta property="og:description" content="The bull-board equivalent for your terminal. Zero config, auto-discovers queues on any Redis.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d1117'/%3E%3Cpath d='M8 10l7 6-7 6' stroke='%23e3b341' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M18 23h7' stroke='%2339c5cf' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --fg: #c9d1d9;
+    --muted: #8b949e;
+    --border: #30363d;
+    --yellow: #e3b341;
+    --cyan: #39c5cf;
+    --green: #56d364;
+    --red: #f85149;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #ffffff; --panel: #f6f8fa; --fg: #1f2328; --muted: #59636e;
+      --border: #d1d9e0; --yellow: #9a6700; --cyan: #0a7f8a; --green: #1a7f37; --red: #cf222e;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 var(--mono); }
+  main { max-width: 780px; margin: 0 auto; padding: 48px 16px 64px; }
+  a { color: var(--cyan); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  h1, h2 { font-weight: 700; line-height: 1.3; }
+  h1 { font-size: 1.6rem; margin: 0 0 8px; }
+  h1 .p { color: var(--green); }
+  h2 { font-size: 1rem; margin: 44px 0 12px; color: var(--yellow); }
+  h2::before { content: "## "; color: var(--muted); }
+  p { margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  code { color: var(--yellow); }
+  pre { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; overflow-x: auto; margin: 0 0 12px; line-height: 1.5; }
+  pre code { color: inherit; }
+  .c { color: var(--muted); }
+  .y { color: var(--yellow); } .cy { color: var(--cyan); } .g { color: var(--green); } .r { color: var(--red); }
+  nav { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 16px 0 28px; font-size: .9rem; }
+  nav a::before { content: "["; color: var(--muted); }
+  nav a::after { content: "]"; color: var(--muted); }
+  .install { display: flex; align-items: center; gap: 12px; }
+  .install pre { flex: 1; margin: 0; }
+  button { font: inherit; font-size: .85rem; color: var(--fg); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  .screen { font-size: clamp(.58rem, 1.9vw, .84rem); }
+  ul { padding-left: 0; list-style: none; margin: 0 0 12px; }
+  li { padding-left: 2ch; text-indent: -2ch; }
+  li::before { content: "- "; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; margin-bottom: 12px; }
+  td { padding: 3px 12px 3px 0; vertical-align: top; border-bottom: 1px dashed var(--border); }
+  td:first-child { white-space: nowrap; color: var(--yellow); width: 1%; }
+  h3 { font-size: .9rem; margin: 20px 0 6px; color: var(--cyan); }
+  footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--border); font-size: .85rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1><span class="p">$</span> bull-cli</h1>
+  <p class="muted">A terminal dashboard for <a href="https://github.com/taskforcesh/bullmq">BullMQ</a> job queues. It works like <code>bull-board</code>, but runs in your shell. Point it at a Redis instance, then browse queues, jobs and job details, or retry, promote, pause and drain them, without opening a browser.</p>
+
+  <nav>
+    <a href="https://github.com/ang3lkar/bull-cli">github</a>
+    <a href="https://www.npmjs.com/package/@angelkar/bull-cli">npm</a>
+    <a href="#usage">usage</a>
+    <a href="#keys">keys</a>
+    <a href="#config">config</a>
+  </nav>
+
+  <div class="install">
+    <pre><code><span class="c">$</span> npm install -g @angelkar/bull-cli</code></pre>
+    <button type="button" data-copy="npm install -g @angelkar/bull-cli">copy</button>
+  </div>
+  <p class="muted" style="margin-top:10px">Requires Node.js &gt;= 20 and a reachable Redis with one or more BullMQ queues.</p>
+
+<pre class="screen" aria-label="Screenshot of the bull-cli job list view"><code><span class="y">bull-cli v0.1.0</span>
+<span class="y">[Esc/h]</span> Back    <span class="y">[r]</span> Refresh    <span class="y">[q]</span> Quit
+<span class="cy">[↑/↓]</span> Move      <span class="cy">[1-5]</span> Status    <span class="cy">[Enter]</span> Detail    <span class="cy">[/]</span> Filter
+
+<span class="c">Queues &gt;</span> emailQ
+<span class="y">[Delayed](0)</span> | Waiting (12) | Active (2) | <span class="r">Failed (1)</span> | <span class="g">Completed (4)</span>
+
+   <span class="c">ID    Name                State     Attempts  CreatedAt</span>
+<span class="g">❯</span>  12    send-email          waiting          0  2026-07-26 10:41
+   13    send-email          waiting          0  2026-07-26 10:41
+   14    welcome-digest      waiting          0  2026-07-26 10:42
+
+                                                    <span class="c">Page 1 of 2</span>
+<span class="c">redis://localhost:6379</span></code></pre>
+
+  <h2>features</h2>
+  <ul>
+    <li>Zero config. It finds queues by running <code>SCAN</code> for <code>bull:*:meta</code> keys.</li>
+    <li>Delayed, waiting, active, failed and completed jobs, with pagination and search.</li>
+    <li>Job detail: data, return value, stacktrace and options. Copy the data JSON to the clipboard.</li>
+    <li>Retry, delete, promote and duplicate jobs. Pause, resume and drain queues.</li>
+    <li>Refreshes every 3s. Runs in the alternate screen buffer, so your scrollback stays clean.</li>
+    <li><code>--output=json</code> for scripts and CI.</li>
+  </ul>
+
+  <h2 id="usage">usage</h2>
+<pre><code>bull-cli [options]
+
+  --redis &lt;url&gt;      Redis URL           <span class="c"># &gt; REDIS_URL &gt; redis://localhost:6379</span>
+  --prefix &lt;prefix&gt;  BullMQ key prefix   <span class="c"># &gt; BULLMQ_PREFIX &gt; bull</span>
+  --output &lt;format&gt;  Output mode         <span class="c"># json</span>
+  --queue &lt;name&gt;     Queue filter for --output=json
+  -h, --help
+  -v, --version</code></pre>
+<pre><code><span class="c">$</span> bull-cli
+<span class="c">$</span> bull-cli --redis redis://:secret@redis.internal:6379
+<span class="c">$</span> bull-cli --prefix myapp
+<span class="c">$</span> bull-cli --output=json --queue=email</code></pre>
+
+  <h2 id="keys">keys</h2>
+  <h3>global</h3>
+  <table>
+    <tr><td>q</td><td>quit</td></tr>
+    <tr><td>r</td><td>refresh now</td></tr>
+    <tr><td>Esc / h</td><td>back one view</td></tr>
+    <tr><td>Shift+H</td><td>jump to the queue dashboard</td></tr>
+  </table>
+  <h3>queue list</h3>
+  <table>
+    <tr><td>↑ / ↓</td><td>move</td></tr>
+    <tr><td>Enter</td><td>open queue</td></tr>
+    <tr><td>p</td><td>pause / resume</td></tr>
+    <tr><td>Shift+D</td><td>drain (asks to confirm)</td></tr>
+  </table>
+  <h3>job list</h3>
+  <table>
+    <tr><td>← / →</td><td>previous / next status</td></tr>
+    <tr><td>1–5</td><td>delayed, waiting, active, failed, completed</td></tr>
+    <tr><td>b / n</td><td>previous / next page</td></tr>
+    <tr><td>/</td><td>search by ID or name</td></tr>
+    <tr><td>Enter</td><td>job detail</td></tr>
+    <tr><td>R</td><td>retry (failed only)</td></tr>
+    <tr><td>p</td><td>promote (delayed only)</td></tr>
+    <tr><td>c</td><td>duplicate as a new delayed job</td></tr>
+    <tr><td>Shift+D</td><td>delete (asks to confirm)</td></tr>
+  </table>
+  <h3>job detail</h3>
+  <table>
+    <tr><td>R</td><td>retry (failed only)</td></tr>
+    <tr><td>Shift+D</td><td>delete</td></tr>
+    <tr><td>c</td><td>copy job data JSON</td></tr>
+  </table>
+
+  <h2 id="config">config</h2>
+  <p>Optional. The CLI reads <code>./bull-cli.json</code>, then <code>~/.config/bull-cli/config.json</code> (or the same path under <code>$XDG_CONFIG_HOME</code>). Both files may use JSONC, and the project file overrides the user file key by key.</p>
+<pre><code>{
+  <span class="c">// poll interval, ms (&gt;= 250)</span>
+  "refreshIntervalMs": 3000,
+  <span class="c">// per-refresh timeout, ms (&gt;= 250); raise for remote/tunnelled Redis</span>
+  "refreshTimeoutMs": 5000,
+}</code></pre>
+
+  <h2>hack on it</h2>
+<pre><code><span class="c">$</span> git clone https://github.com/ang3lkar/bull-cli.git &amp;&amp; cd bull-cli
+<span class="c">$</span> npm install
+<span class="c">$</span> npm run redis:up   <span class="c"># redis:7-alpine via docker compose</span>
+<span class="c">$</span> npm run seed       <span class="c"># demo queues and jobs</span>
+<span class="c">$</span> npm run dev</code></pre>
+
+  <footer>
+    MIT · built with Ink + BullMQ · <a href="https://github.com/ang3lkar/bull-cli/issues">report an issue</a>
+  </footer>
+</main>
+<script>
+  document.querySelectorAll("button[data-copy]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      if (!navigator.clipboard) return;
+      navigator.clipboard.writeText(btn.dataset.copy).then(function () {
+        btn.textContent = "copied";
+        setTimeout(function () { btn.textContent = "copy"; }, 1500);
+      }, function () {});
+    });
+  });
+</script>
+</body>
+</html>

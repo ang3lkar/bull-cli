@@ -21,7 +21,7 @@
   "bugs": {
     "url": "https://github.com/ang3lkar/bull-cli/issues"
   },
-  "homepage": "https://github.com/ang3lkar/bull-cli#readme",
+  "homepage": "https://ang3lkar.github.io/bull-cli/",
   "engines": {
     "node": ">=20"
   },
