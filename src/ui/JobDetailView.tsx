@@ -37,16 +37,16 @@ function timestampOrDash(ms: number | null): string {
 
 /**
  * Width of the label cell in the left column's metadata table — the longest
- * label is `Processed` (9 chars) plus its colon, so 11 leaves a one-space gutter
- * before every value starts at the same column.
+ * label is `Processed at` (12 chars) plus its colon, so 14 leaves a one-space
+ * gutter before every value starts at the same column.
  */
-const LABEL_WIDTH = 11;
+const LABEL_WIDTH = 14;
 
 /** A single left-column metadata row with a fixed-width label so values align. */
 function MetaRow({ label, value }: { label: string; value: string }) {
   return (
     <Box>
-      <Box width={LABEL_WIDTH}>
+      <Box width={LABEL_WIDTH} flexShrink={0}>
         <Text>{label}:</Text>
       </Box>
       <Text>{value}</Text>
@@ -56,15 +56,15 @@ function MetaRow({ label, value }: { label: string; value: string }) {
 
 /**
  * Width of the left metadata column — wide enough to fit a full timestamp line
- * (e.g. `Processed: 2026-07-12 23:47:11`) without wrapping.
+ * (e.g. `Processed at: 2026-07-12 23:47:11`) without wrapping.
  */
 const LEFT_COLUMN_WIDTH = 34;
 
 /**
  * Two-column job detail view. The left column holds compact metadata — the
- * `name #id` header, timestamps, attempts, and progress — at a fixed width; the
+ * job ID and name, timestamps, attempts, progress, and `opts` JSON — at a fixed width; the
  * right column grows to fill the remaining space with the bulky content: pretty
- * `data`/`opts` JSON, `returnvalue` when present, and `stacktrace` lines when
+ * `data` JSON, `returnvalue` when present, and `stacktrace` lines when
  * non-empty. Real overlay/centering positioning happens in `App.tsx`
  * (Phase 8) — this component just renders the view box itself. Loading is
  * the caller's concern: this component always renders a fully-loaded
@@ -77,15 +77,19 @@ export function JobDetailView({ detail, queueName }: JobDetailViewProps) {
   return (
     <Box borderStyle="round" flexDirection="row" paddingX={1}>
       <Box flexDirection="column" width={LEFT_COLUMN_WIDTH} marginRight={2}>
-        <Text bold>
-          {detail.name} <Text dimColor>#{detail.id}</Text>
-        </Text>
+        <MetaRow label="Job ID" value={detail.id} />
+        <MetaRow label="Job Name" value={detail.name} />
         {queueName !== undefined && <MetaRow label="Queue" value={queueName} />}
-        <MetaRow label="Created" value={formatClock(detail.timestamps.created)} />
-        <MetaRow label="Processed" value={timestampOrDash(detail.timestamps.processed)} />
-        <MetaRow label="Finished" value={timestampOrDash(detail.timestamps.finished)} />
+        <MetaRow label="Created at" value={formatClock(detail.timestamps.created)} />
+        <MetaRow label="Processed at" value={timestampOrDash(detail.timestamps.processed)} />
+        <MetaRow label="Finished at" value={timestampOrDash(detail.timestamps.finished)} />
         <MetaRow label="Attempts" value={String(detail.attemptsMade)} />
         <MetaRow label="Progress" value={progressLine} />
+
+        <Box flexDirection="column" marginTop={1}>
+          <Text bold>Opts</Text>
+          <Text>{prettyJson(detail.opts)}</Text>
+        </Box>
       </Box>
 
       <Box flexDirection="column" flexGrow={1}>
@@ -93,21 +97,18 @@ export function JobDetailView({ detail, queueName }: JobDetailViewProps) {
         <Text>{prettyJson(detail.data)}</Text>
 
         {detail.returnvalue !== undefined && (
-          <Box flexDirection="column">
+          <Box flexDirection="column" marginTop={1}>
             <Text bold>Return Value</Text>
             <Text>{prettyJson(detail.returnvalue)}</Text>
           </Box>
         )}
 
         {detail.stacktrace.length > 0 && (
-          <Box flexDirection="column">
+          <Box flexDirection="column" marginTop={1}>
             <Text bold>Stacktrace</Text>
             <Text>{detail.stacktrace.join('\n')}</Text>
           </Box>
         )}
-
-        <Text bold>Opts</Text>
-        <Text>{prettyJson(detail.opts)}</Text>
       </Box>
     </Box>
   );

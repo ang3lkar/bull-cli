@@ -75,6 +75,17 @@ describe('JobDetailView', () => {
     expect(frame).toContain('—');
   });
 
+  it('labels date fields with an "at" suffix and keeps Opts in the left column', () => {
+    const { lastFrame } = render(<JobDetailView detail={baseDetail({ opts: { delay: 500 } })} />);
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Created at:');
+    expect(frame).toContain('Processed at:');
+    expect(frame).toContain('Finished at:');
+    const optsLine = frame.split('\n').find((line) => line.includes('Opts')) ?? '';
+    const dataLine = frame.split('\n').find((line) => line.includes('Data')) ?? '';
+    expect(optsLine.indexOf('Opts')).toBeLessThan(dataLine.indexOf('Data'));
+  });
+
   it('renders present processed/finished timestamps via formatClock', () => {
     const processed = NOW + 1000;
     const finished = NOW + 2000;
