@@ -165,3 +165,24 @@ export function classifyStack(entries: string[]): StackLine[] {
   }
   return result;
 }
+
+/**
+ * Maps bullmq's state string (from `job.getState()`) onto the status bucket
+ * whose actions apply to it: `prioritized` and `waiting-children` jobs are
+ * waiting in all but name. `undefined` for anything else (e.g. `unknown`).
+ */
+export function statusForState(state: string): JobStatus | undefined {
+  switch (state) {
+    case 'active':
+    case 'waiting':
+    case 'completed':
+    case 'failed':
+    case 'delayed':
+      return state;
+    case 'prioritized':
+    case 'waiting-children':
+      return 'waiting';
+    default:
+      return undefined;
+  }
+}

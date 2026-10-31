@@ -299,6 +299,10 @@ function handleDetailInput(store: DashboardStore, input: string, key: Key): void
     store.requestDelete();
     return;
   }
+  if (input === 'p') {
+    void store.promoteSelected();
+    return;
+  }
   if (input === 'c') {
     void store.copyDetailData();
   }

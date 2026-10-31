@@ -38,7 +38,7 @@ export async function retryJob(queue: Queue, jobId: string): Promise<ActionResul
     }
 
     await job.retry('failed');
-    return { ok: true };
+    return { ok: true, info: `Job ${jobId} moved back to waiting` };
   } catch (err) {
     return { ok: false, message: toMessage(err) };
   }

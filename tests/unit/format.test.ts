@@ -8,6 +8,7 @@ import {
   jobTimings,
   maskRedisUrl,
   normalizeProgress,
+  statusForState,
 } from '../../src/core/format.js';
 
 describe('normalizeProgress', () => {
@@ -244,5 +245,25 @@ describe('classifyStack', () => {
       (line) => line.kind,
     );
     expect(kinds).toEqual(['message', 'library']);
+  });
+});
+
+describe('statusForState', () => {
+  it.each([
+    'active',
+    'waiting',
+    'completed',
+    'failed',
+    'delayed',
+  ] as const)('passes the %s status through', (state) => {
+    expect(statusForState(state)).toBe(state);
+  });
+
+  it.each(['prioritized', 'waiting-children'])('treats %s as waiting', (state) => {
+    expect(statusForState(state)).toBe('waiting');
+  });
+
+  it('has no status for an unknown state', () => {
+    expect(statusForState('unknown')).toBeUndefined();
   });
 });

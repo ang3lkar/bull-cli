@@ -1666,6 +1666,103 @@ describe('DashboardStore: detail view', () => {
     store.closeDetail(); // no-op
   });
 
+  function failedDetail(overrides: Partial<JobDetail> = {}): JobDetail {
+    return {
+      id: '1',
+      name: 'j1',
+      attemptsMade: 1,
+      timestamp: 0,
+      progress: null,
+      data: {},
+      returnvalue: null,
+      stacktrace: ['Error: boom'],
+      opts: {},
+      timestamps: { created: 0, processed: 1, finished: 2 },
+      rawProgress: 0,
+      state: 'failed',
+      failedReason: 'boom',
+      ...overrides,
+    };
+  }
+
+  async function openFailedJob() {
+    const state: FakeState = {
+      queues: [makeQueue('a')],
+      jobs: { [jobKey('a', 'active')]: [makeJob('1', 'j1')] },
+      details: { [detailKey('a', '1')]: failedDetail() },
+    };
+    const deps = createFakeDeps(state);
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+    await store.openDetail();
+    return { state, deps, store };
+  }
+
+  it('reloads the open job on refresh, so a retried job stops showing as failed', async () => {
+    const { state, store } = await openFailedJob();
+    expect(store.getSnapshot().detail?.state).toBe('failed');
+
+    state.details[detailKey('a', '1')] = failedDetail({ state: 'waiting', failedReason: null });
+    await store.retrySelected();
+
+    expect(store.getSnapshot().detail?.state).toBe('waiting');
+    expect(store.getSnapshot().detail?.failedReason).toBeNull();
+    expect(store.getSnapshot().currentView.kind).toBe('detail');
+  });
+
+  it('closes the detail view with a toast when the open job has disappeared', async () => {
+    const { state, store } = await openFailedJob();
+
+    delete state.details[detailKey('a', '1')];
+    await store.refresh();
+
+    const snap = store.getSnapshot();
+    expect(snap.currentView.kind).toBe('jobs');
+    expect(snap.detail).toBeNull();
+    expect(snap.toasts.map((t) => t.message)).toContain('Job 1 no longer exists');
+  });
+
+  it('keeps the last-loaded detail when reloading it fails', async () => {
+    const { deps, store } = await openFailedJob();
+
+    (deps.getJobDetail as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('blip'));
+    await store.refresh();
+
+    const snap = store.getSnapshot();
+    expect(snap.currentView.kind).toBe('detail');
+    expect(snap.detail?.state).toBe('failed');
+    expect(snap.toasts).toEqual([]);
+  });
+
+  it('drops a detail reload that lands after the user has left the view', async () => {
+    const { deps, store } = await openFailedJob();
+    const pending = deferred<JobDetail | null>();
+    (deps.getJobDetail as ReturnType<typeof vi.fn>).mockReturnValueOnce(pending.promise);
+
+    const refreshing = store.refresh();
+    await flush();
+    // The reload is in flight (open + this reload) before the user leaves.
+    expect(deps.getJobDetail).toHaveBeenCalledTimes(2);
+    store.closeDetail();
+    pending.resolve(failedDetail({ state: 'waiting' }));
+    await refreshing;
+
+    expect(store.getSnapshot().currentView.kind).toBe('jobs');
+    expect(store.getSnapshot().detail).toBeNull();
+  });
+
+  it('does not fetch job detail on refresh outside the detail view', async () => {
+    const deps = createFakeDeps({
+      queues: [makeQueue('a')],
+      jobs: { [jobKey('a', 'active')]: [makeJob('1', 'j1')] },
+      details: {},
+    });
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+    await store.refresh();
+    expect(deps.getJobDetail).not.toHaveBeenCalled();
+  });
+
   it('openDetail is a no-op when nothing is selected', async () => {
     const deps = createFakeDeps({ queues: [], jobs: {}, details: {} });
     const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));

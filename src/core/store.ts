@@ -515,6 +515,10 @@ export class DashboardStore {
         this.queueCountsByName.set(queueName, jobPage.counts);
         this.selectedJobId = this.resolveSelectedJobId(prevSelectedJobId, prevJobs, jobPage.jobs);
       }
+      await this.refreshOpenDetail(myGen);
+      if (myGen !== this.refreshGeneration) {
+        return;
+      }
       // Success (or nothing to fetch) clears the dedupe tracking, so a
       // later re-failure — even for the same queue — toasts again.
       this.jobFetchErrorQueue = undefined;
@@ -562,6 +566,36 @@ export class DashboardStore {
     // per-queue counts have landed, so the queue table has real numbers the
     // first time it's shown rather than a screen of zeros.
     this.initialLoadComplete = true;
+  }
+
+  /**
+   * Reloads the job shown in the detail view, so it follows the job as it
+   * changes state: a retry, a worker picking it up, progress, completion. A
+   * job that has disappeared (deleted, or removed on completion) closes the
+   * view with a toast. A failed reload keeps the last-loaded detail on
+   * screen: a connection-level problem is already surfaced by the rest of
+   * the refresh, and one bad fetch shouldn't blank the view.
+   */
+  private async refreshOpenDetail(myGen: number): Promise<void> {
+    const view = this.currentView();
+    if (view.kind !== 'detail' || this.detail === null) {
+      return;
+    }
+    let detail: JobDetail | null;
+    try {
+      detail = await this.deps.getJobDetail(view.queueName, view.jobId);
+    } catch {
+      return;
+    }
+    if (myGen !== this.refreshGeneration || this.currentView() !== view) {
+      return;
+    }
+    if (detail === null) {
+      this.popView();
+      this.pushToast(`Job ${view.jobId} no longer exists`);
+      return;
+    }
+    this.detail = detail;
   }
 
   /** Preserves the selected queue by name; clamps to the nearest remaining queue (by its old index) if it vanished, or `null` if none are left. */

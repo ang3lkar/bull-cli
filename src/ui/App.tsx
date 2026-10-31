@@ -1,4 +1,5 @@
 import { Box, Text } from 'ink';
+import { statusForState } from '../core/format.js';
 import type { DashboardStore } from '../core/store.js';
 import { Breadcrumb } from './Breadcrumb.js';
 import { ConfirmPrompt } from './ConfirmPrompt.js';
@@ -91,12 +92,19 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
     );
   }
 
+  // In job detail the available actions follow the job's own, live state
+  // (a retried job is no longer failed) rather than the tab it was opened from.
+  const actionStatus =
+    snapshot.currentView.kind === 'detail' && snapshot.detail !== null
+      ? statusForState(snapshot.detail.state)
+      : snapshot.tab;
+
   return (
     <Box flexDirection="column" height={rows} paddingTop={1} paddingX={1}>
       <Header
         version={version}
         view={snapshot.currentView}
-        status={snapshot.tab}
+        status={actionStatus}
         width={contentWidth}
       />
       <Box flexDirection="column" flexGrow={1}>
