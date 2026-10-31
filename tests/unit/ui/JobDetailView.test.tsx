@@ -137,9 +137,9 @@ describe('JobDetailView', () => {
     expect(lastFrame()).toContain('"delay": 500');
   });
 
-  it('shows the job state as a badge', () => {
+  it('shows the job state', () => {
     const { lastFrame } = render(<JobDetailView detail={baseDetail({ state: 'failed' })} />);
-    expect(lastFrame()).toContain(' failed ');
+    expect(lastFrame()).toMatch(/State:\s+failed/);
   });
 
   it('shows an unrecognised state too', () => {

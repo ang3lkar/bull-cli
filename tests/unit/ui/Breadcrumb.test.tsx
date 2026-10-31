@@ -21,6 +21,21 @@ describe('Breadcrumb', () => {
     expect(lastFrame()).toContain('Queues > emailQ > job #43');
   });
 
+  it('puts the status tab between the queue and the job in the detail view', () => {
+    const { lastFrame } = render(
+      <Breadcrumb view={{ kind: 'detail', queueName: 'reportQ', jobId: '6' }} status="failed" />,
+    );
+    expect(lastFrame()).toContain('Queues > reportQ > failed > job #6');
+  });
+
+  it('leaves the status out of the job list view, where the tabs already show it', () => {
+    const { lastFrame } = render(
+      <Breadcrumb view={{ kind: 'jobs', queueName: 'reportQ' }} status="failed" />,
+    );
+    expect(lastFrame()).toContain('Queues > reportQ');
+    expect(lastFrame()).not.toContain('failed');
+  });
+
   it('renders a queue literally named "Queues" without collapsing the crumbs', () => {
     const { lastFrame } = render(<Breadcrumb view={{ kind: 'jobs', queueName: 'Queues' }} />);
     expect(lastFrame()).toContain('Queues > Queues');

@@ -152,7 +152,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
           </>
         ) : (
           <>
-            <Breadcrumb view={snapshot.currentView} />
+            <Breadcrumb view={snapshot.currentView} status={snapshot.tab} />
             {snapshot.detailLoading || snapshot.detail === null ? (
               <Text dimColor>Loading job detail…</Text>
             ) : (

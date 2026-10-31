@@ -61,7 +61,7 @@ function MetaRow({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * Badge colour per bullmq state, matching the status tab colours. Completed
+ * Text colour per bullmq state, matching the status tab colours. Completed
  * gets green here (the tab count is grey) so a successful job reads as one.
  */
 const STATE_COLORS: Record<string, string> = {
@@ -74,14 +74,14 @@ const STATE_COLORS: Record<string, string> = {
   completed: 'green',
 };
 
-function StateBadge({ state }: { state: string }) {
+function StateRow({ state }: { state: string }) {
   return (
     <Box>
       <Box width={LABEL_WIDTH} flexShrink={0}>
         <Text>State:</Text>
       </Box>
-      <Text bold inverse color={STATE_COLORS[state] ?? 'gray'}>
-        {` ${state} `}
+      <Text bold color={STATE_COLORS[state] ?? 'gray'}>
+        {state}
       </Text>
     </Box>
   );
@@ -132,7 +132,7 @@ export function JobDetailView({ detail, queueName }: JobDetailViewProps) {
       <Box flexDirection="column" width={LEFT_COLUMN_WIDTH} flexShrink={0} marginRight={2}>
         <MetaRow label="Job ID" value={detail.id} />
         <MetaRow label="Job Name" value={detail.name} />
-        <StateBadge state={detail.state} />
+        <StateRow state={detail.state} />
         {queueName !== undefined && <MetaRow label="Queue" value={queueName} />}
         <MetaRow label="Created at" value={formatClock(detail.timestamps.created)} />
         <MetaRow label="Processed at" value={timestampOrDash(detail.timestamps.processed)} />
