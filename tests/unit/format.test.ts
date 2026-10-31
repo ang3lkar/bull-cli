@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  attemptsLimit,
+  classifyStack,
   displayTimestamp,
   formatClock,
+  formatDuration,
+  jobTimings,
   maskRedisUrl,
   normalizeProgress,
 } from '../../src/core/format.js';
@@ -139,5 +143,106 @@ describe('maskRedisUrl', () => {
 
   it('does not throw on an empty string', () => {
     expect(maskRedisUrl('')).toBe('');
+  });
+});
+
+describe('formatDuration', () => {
+  it.each([
+    [0, '0ms'],
+    [340, '340ms'],
+    [999, '999ms'],
+    [1000, '1.0s'],
+    [2140, '2.1s'],
+    [59_949, '59.9s'],
+    [60_000, '1m 0s'],
+    [252_000, '4m 12s'],
+    [3_600_000, '1h 0m'],
+    [3_900_000, '1h 5m'],
+  ])('formats %i ms as %s', (ms, expected) => {
+    expect(formatDuration(ms)).toBe(expected);
+  });
+
+  it('clamps negative durations (worker clock skew) to 0ms', () => {
+    expect(formatDuration(-50)).toBe('0ms');
+  });
+});
+
+describe('jobTimings', () => {
+  it('has neither value for a job that has not been processed', () => {
+    expect(jobTimings({ created: 0, processed: null, finished: null })).toEqual({
+      waited: null,
+      ran: null,
+    });
+  });
+
+  it('has only the wait for a job still running', () => {
+    expect(jobTimings({ created: 0, processed: 2100, finished: null })).toEqual({
+      waited: '2.1s',
+      ran: null,
+    });
+  });
+
+  it('has the wait and the run time for a finished job', () => {
+    expect(jobTimings({ created: 0, processed: 2100, finished: 2440 })).toEqual({
+      waited: '2.1s',
+      ran: '340ms',
+    });
+  });
+});
+
+describe('attemptsLimit', () => {
+  it('reads opts.attempts', () => {
+    expect(attemptsLimit({ attempts: 3 })).toBe(3);
+  });
+
+  it.each([
+    [{}],
+    [{ attempts: 0 }],
+    [{ attempts: '3' }],
+    [null],
+    [undefined],
+  ])('defaults to a single attempt for %j', (opts) => {
+    expect(attemptsLimit(opts)).toBe(1);
+  });
+});
+
+describe('classifyStack', () => {
+  const stack = [
+    'Error: boom',
+    '    at handler (/app/src/worker.ts:10:5)',
+    '    at Worker.callProcessJob (/app/node_modules/bullmq/dist/cjs/classes/worker.js:176:21)',
+    '    at helper (/app/src/util.ts:3:1)',
+    '    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)',
+    '    at node:internal/main:1:1',
+  ].join('\n');
+
+  it('tags the message, first own frame, other own frames, and library frames', () => {
+    expect(classifyStack([stack]).map((line) => line.kind)).toEqual([
+      'message',
+      'origin',
+      'library',
+      'frame',
+      'library',
+      'library',
+    ]);
+  });
+
+  it("finds an origin frame in each attempt's stack separately", () => {
+    const kinds = classifyStack([stack, stack]).map((line) => line.kind);
+    expect(kinds.filter((kind) => kind === 'origin')).toHaveLength(2);
+  });
+
+  it('keeps the original line text', () => {
+    expect(classifyStack(['Error: x\n    at a (/b.ts:1:1)']).map((line) => line.text)).toEqual([
+      'Error: x',
+      '    at a (/b.ts:1:1)',
+    ]);
+  });
+
+  it('has no origin when every frame is a library frame', () => {
+    const kinds = classifyStack(['Error: x\n    at f (/app/node_modules/x/index.js:1:1)']).map(
+      (line) => line.kind,
+    );
+    expect(kinds).toEqual(['message', 'library']);
   });
 });

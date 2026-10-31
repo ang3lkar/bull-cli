@@ -1633,6 +1633,8 @@ describe('DashboardStore: detail view', () => {
       opts: {},
       timestamps: { created: 0, processed: null, finished: null },
       rawProgress: 50,
+      state: 'active',
+      failedReason: null,
     };
     const state: FakeState = {
       queues: [makeQueue('a')],
@@ -2057,6 +2059,8 @@ describe('DashboardStore: navigation stack', () => {
           opts: {},
           timestamps: { created: 0, processed: null, finished: null },
           rawProgress: null,
+          state: 'active',
+          failedReason: null,
         },
       },
     };

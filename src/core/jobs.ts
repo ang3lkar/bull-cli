@@ -127,5 +127,7 @@ export async function getJobDetail(queue: Queue, jobId: string): Promise<JobDeta
       finished: job.finishedOn ?? null,
     },
     rawProgress: job.progress,
+    state,
+    failedReason: job.failedReason ? job.failedReason : null,
   };
 }

@@ -36,6 +36,13 @@ export interface JobDetail extends JobSummary {
   };
   /** Unclamped, unmapped raw `job.progress` value (may be an object). */
   rawProgress: unknown;
+  /**
+   * bullmq's own state string from `job.getState()` — usually a `JobStatus`,
+   * but can also be e.g. `prioritized`, `waiting-children` or `unknown`.
+   */
+  state: string;
+  /** `job.failedReason`, or `null` when the job hasn't failed. */
+  failedReason: string | null;
 }
 
 /** One page of a job list, as shown in the job list table. */

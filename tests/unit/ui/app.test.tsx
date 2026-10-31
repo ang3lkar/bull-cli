@@ -48,6 +48,8 @@ function detail(id: string): JobDetail {
     opts: {},
     timestamps: { created: NOW, processed: NOW, finished: NOW },
     rawProgress: null,
+    state: 'active',
+    failedReason: null,
   };
 }
 

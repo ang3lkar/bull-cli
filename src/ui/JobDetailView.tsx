@@ -1,5 +1,11 @@
 import { Box, Text } from 'ink';
-import { formatClock } from '../core/format.js';
+import {
+  attemptsLimit,
+  classifyStack,
+  formatClock,
+  jobTimings,
+  type StackLine,
+} from '../core/format.js';
 import type { JobDetail } from '../core/types.js';
 
 export interface JobDetailViewProps {
@@ -55,6 +61,51 @@ function MetaRow({ label, value }: { label: string; value: string }) {
 }
 
 /**
+ * Badge colour per bullmq state, matching the status tab colours. Completed
+ * gets green here (the tab count is grey) so a successful job reads as one.
+ */
+const STATE_COLORS: Record<string, string> = {
+  delayed: 'yellow',
+  waiting: 'yellow',
+  prioritized: 'yellow',
+  'waiting-children': 'yellow',
+  active: 'cyan',
+  failed: 'red',
+  completed: 'green',
+};
+
+function StateBadge({ state }: { state: string }) {
+  return (
+    <Box>
+      <Box width={LABEL_WIDTH} flexShrink={0}>
+        <Text>State:</Text>
+      </Box>
+      <Text bold inverse color={STATE_COLORS[state] ?? 'gray'}>
+        {` ${state} `}
+      </Text>
+    </Box>
+  );
+}
+
+/**
+ * One stack trace line: dependency/Node frames are dimmed and the first frame
+ * from the user's own code is highlighted, since that's usually where to look.
+ */
+function StackLineText({ line }: { line: StackLine }) {
+  if (line.kind === 'library') {
+    return <Text dimColor>{line.text}</Text>;
+  }
+  if (line.kind === 'origin') {
+    return (
+      <Text bold color="yellow">
+        {line.text}
+      </Text>
+    );
+  }
+  return <Text>{line.text}</Text>;
+}
+
+/**
  * Width of the left metadata column — wide enough to fit a full timestamp line
  * (e.g. `Processed at: 2026-07-12 23:47:11`) without wrapping.
  */
@@ -62,10 +113,11 @@ const LEFT_COLUMN_WIDTH = 34;
 
 /**
  * Two-column job detail view. The left column holds compact metadata — the
- * job ID and name, timestamps, attempts, progress, and `opts` JSON — at a fixed width; the
+ * `Job ID` and `Job Name`, timestamps, attempts, progress, and `opts` JSON — at a fixed width; the
  * right column grows to fill the remaining space with the bulky content: pretty
- * `data` JSON, `returnvalue` when present, and `stacktrace` lines when
- * non-empty. Real overlay/centering positioning happens in `App.tsx`
+ * failure reason (failed jobs only), `data` JSON, `returnvalue` when present,
+ * and `stacktrace` lines when non-empty, with the first frame from the user's
+ * own code highlighted. Real overlay/centering positioning happens in `App.tsx`
  * (Phase 8) — this component just renders the view box itself. Loading is
  * the caller's concern: this component always renders a fully-loaded
  * `detail` (the parent only mounts it once `detailLoading` is false).
@@ -73,17 +125,24 @@ const LEFT_COLUMN_WIDTH = 34;
 export function JobDetailView({ detail, queueName }: JobDetailViewProps) {
   const progressLine =
     detail.progress === null ? prettyJson(detail.rawProgress) : `${detail.progress}%`;
+  const timings = jobTimings(detail.timestamps);
 
   return (
     <Box borderStyle="round" flexDirection="row" paddingX={1}>
-      <Box flexDirection="column" width={LEFT_COLUMN_WIDTH} marginRight={2}>
+      <Box flexDirection="column" width={LEFT_COLUMN_WIDTH} flexShrink={0} marginRight={2}>
         <MetaRow label="Job ID" value={detail.id} />
         <MetaRow label="Job Name" value={detail.name} />
+        <StateBadge state={detail.state} />
         {queueName !== undefined && <MetaRow label="Queue" value={queueName} />}
         <MetaRow label="Created at" value={formatClock(detail.timestamps.created)} />
         <MetaRow label="Processed at" value={timestampOrDash(detail.timestamps.processed)} />
         <MetaRow label="Finished at" value={timestampOrDash(detail.timestamps.finished)} />
-        <MetaRow label="Attempts" value={String(detail.attemptsMade)} />
+        {timings.waited !== null && <MetaRow label="Waited" value={timings.waited} />}
+        {timings.ran !== null && <MetaRow label="Ran" value={timings.ran} />}
+        <MetaRow
+          label="Attempts"
+          value={`${detail.attemptsMade} / ${attemptsLimit(detail.opts)}`}
+        />
         <MetaRow label="Progress" value={progressLine} />
 
         <Box flexDirection="column" marginTop={1}>
@@ -93,6 +152,14 @@ export function JobDetailView({ detail, queueName }: JobDetailViewProps) {
       </Box>
 
       <Box flexDirection="column" flexGrow={1}>
+        {detail.failedReason !== null && (
+          <Box marginBottom={1}>
+            <Text bold color="red">
+              ✖ {detail.failedReason}
+            </Text>
+          </Box>
+        )}
+
         <Text bold>Data</Text>
         <Text>{prettyJson(detail.data)}</Text>
 
@@ -106,7 +173,12 @@ export function JobDetailView({ detail, queueName }: JobDetailViewProps) {
         {detail.stacktrace.length > 0 && (
           <Box flexDirection="column" marginTop={1}>
             <Text bold>Stacktrace</Text>
-            <Text>{detail.stacktrace.join('\n')}</Text>
+            {classifyStack(detail.stacktrace).map((line, index) => (
+              // Lines have no identity beyond their position; the list is
+              // rebuilt whole on every render, never reordered.
+              // biome-ignore lint/suspicious/noArrayIndexKey: see above
+              <StackLineText key={index} line={line} />
+            ))}
           </Box>
         )}
       </Box>

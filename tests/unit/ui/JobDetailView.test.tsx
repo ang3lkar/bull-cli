@@ -19,6 +19,8 @@ function baseDetail(overrides: Partial<JobDetail> = {}): JobDetail {
     opts: { attempts: 3 },
     timestamps: { created: NOW, processed: null, finished: null },
     rawProgress: 50,
+    state: 'active',
+    failedReason: null,
     ...overrides,
   };
 }
@@ -133,5 +135,71 @@ describe('JobDetailView', () => {
   it('pretty-prints opts as JSON', () => {
     const { lastFrame } = render(<JobDetailView detail={baseDetail({ opts: { delay: 500 } })} />);
     expect(lastFrame()).toContain('"delay": 500');
+  });
+
+  it('shows the job state as a badge', () => {
+    const { lastFrame } = render(<JobDetailView detail={baseDetail({ state: 'failed' })} />);
+    expect(lastFrame()).toContain(' failed ');
+  });
+
+  it('shows an unrecognised state too', () => {
+    const { lastFrame } = render(
+      <JobDetailView detail={baseDetail({ state: 'waiting-children' })} />,
+    );
+    expect(lastFrame()).toContain('waiting-children');
+  });
+
+  it('shows the failure reason when the job failed', () => {
+    const { lastFrame } = render(
+      <JobDetailView detail={baseDetail({ failedReason: 'connection reset' })} />,
+    );
+    expect(lastFrame()).toContain('✖ connection reset');
+  });
+
+  it('omits the failure reason when there is none', () => {
+    const { lastFrame } = render(<JobDetailView detail={baseDetail()} />);
+    expect(lastFrame()).not.toContain('✖');
+  });
+
+  it('shows attempts made out of the attempts limit', () => {
+    const { lastFrame } = render(<JobDetailView detail={baseDetail()} />);
+    expect(lastFrame()).toContain('2 / 3');
+  });
+
+  it('shows how long the job waited and ran', () => {
+    const { lastFrame } = render(
+      <JobDetailView
+        detail={baseDetail({
+          timestamps: { created: NOW, processed: NOW + 2100, finished: NOW + 2440 },
+        })}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/Waited:\s+2\.1s/);
+    expect(frame).toMatch(/Ran:\s+340ms/);
+  });
+
+  it('omits timings for a job that has not started', () => {
+    const { lastFrame } = render(<JobDetailView detail={baseDetail()} />);
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toContain('Waited:');
+    expect(frame).not.toContain('Ran:');
+  });
+
+  it('renders every stack trace line, library frames included', () => {
+    const { lastFrame } = render(
+      <JobDetailView
+        detail={baseDetail({
+          stacktrace: [
+            'Error: boom\n    at handler (/app/src/w.ts:1:1)\n    at x (/app/node_modules/y.js:1:1)\n    at z (/app/src/z.ts:2:2)',
+          ],
+        })}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Error: boom');
+    expect(frame).toContain('at handler (/app/src/w.ts:1:1)');
+    expect(frame).toContain('at x (/app/node_modules/y.js:1:1)');
+    expect(frame).toContain('at z (/app/src/z.ts:2:2)');
   });
 });

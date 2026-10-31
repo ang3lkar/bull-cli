@@ -207,6 +207,9 @@ describe('getJobDetail', () => {
       expect(detail?.opts).toBeDefined();
       expect(detail?.stacktrace.length).toBeGreaterThan(0);
       expect(detail?.attemptsMade).toBeGreaterThanOrEqual(1);
+      expect(detail?.state).toBe('failed');
+      expect(detail?.failedReason).toEqual(expect.any(String));
+      expect(detail?.failedReason).not.toBe('');
     } finally {
       await closeSeeded(seeded);
     }
@@ -221,6 +224,8 @@ describe('getJobDetail', () => {
       expect(detail).not.toBeNull();
       expect(detail?.returnvalue).toEqual({ ok: true });
       expect(detail?.stacktrace).toEqual([]);
+      expect(detail?.state).toBe('completed');
+      expect(detail?.failedReason).toBeNull();
     } finally {
       await closeSeeded(seeded);
     }

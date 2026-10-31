@@ -78,3 +78,90 @@ export function formatClock(ms: number): string {
   const seconds = pad2(date.getSeconds());
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
+
+/**
+ * Compact duration for the job detail view, e.g. `340ms`, `2.1s`, `4m 12s`,
+ * `1h 5m`. Negative input (clock skew between workers) clamps to `0ms`.
+ */
+export function formatDuration(ms: number): string {
+  const value = Math.max(0, Math.round(ms));
+  if (value < 1000) {
+    return `${value}ms`;
+  }
+  if (value < 60_000) {
+    return `${(value / 1000).toFixed(1)}s`;
+  }
+  const totalSeconds = Math.floor(value / 1000);
+  if (totalSeconds < 3600) {
+    return `${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s`;
+  }
+  return `${Math.floor(totalSeconds / 3600)}h ${Math.floor((totalSeconds % 3600) / 60)}m`;
+}
+
+/**
+ * How long a job waited before a worker picked it up, and how long it ran,
+ * from its created/processed/finished timestamps. Each is `null` until both of
+ * its timestamps exist. "Waited" includes any `delay` the job was added with.
+ */
+export function jobTimings(timestamps: {
+  created: number;
+  processed: number | null;
+  finished: number | null;
+}): { waited: string | null; ran: string | null } {
+  const { created, processed, finished } = timestamps;
+  return {
+    waited: processed === null ? null : formatDuration(processed - created),
+    ran: processed === null || finished === null ? null : formatDuration(finished - processed),
+  };
+}
+
+/**
+ * bullmq's `opts.attempts` is the total number of tries; it's absent (or 0)
+ * when the job was added without retries, which means a single attempt.
+ */
+export function attemptsLimit(opts: unknown): number {
+  const attempts = (opts as { attempts?: unknown } | null | undefined)?.attempts;
+  return typeof attempts === 'number' && attempts > 1 ? Math.floor(attempts) : 1;
+}
+
+/** How a single stack trace line should be shown in the job detail view. */
+export type StackLineKind = 'message' | 'frame' | 'library' | 'origin';
+
+export interface StackLine {
+  text: string;
+  kind: StackLineKind;
+}
+
+/** Frames inside dependencies or Node itself, which are rarely where the bug is. */
+function isLibraryFrame(line: string): boolean {
+  return line.includes('node_modules') || /\(node:|at node:/.test(line);
+}
+
+/**
+ * Splits bullmq's stacktrace entries (one multi-line stack string per failed
+ * attempt) into lines and tags each one: `library` for dependency/Node
+ * frames, `origin` for the first frame from the user's own code in each
+ * entry, `frame` for the user's other frames, and `message` for everything
+ * else (the `Error: ...` line and any continuation of a wrapped frame).
+ */
+export function classifyStack(entries: string[]): StackLine[] {
+  const result: StackLine[] = [];
+  for (const entry of entries) {
+    let originFound = false;
+    for (const text of entry.split('\n')) {
+      let kind: StackLineKind = 'message';
+      if (/^\s*at\s/.test(text)) {
+        if (isLibraryFrame(text)) {
+          kind = 'library';
+        } else if (!originFound) {
+          kind = 'origin';
+          originFound = true;
+        } else {
+          kind = 'frame';
+        }
+      }
+      result.push({ text, kind });
+    }
+  }
+  return result;
+}
