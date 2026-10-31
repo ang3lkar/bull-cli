@@ -116,6 +116,44 @@ expect, independently of what `redis.ts` hands ioredis directly as a URL string 
 deliberately (see the comment in `config.ts`) so TLS (`rediss:`) and IPv6-bracket-stripping behave
 identically in both places.
 
+## Releasing a version
+
+The package is published to npmjs.com as `@angelkar/bull-cli` (public, via `publishConfig`). No CI
+workflow publishes it; releases are done by hand from a local checkout. Not to GitHub Packages:
+that registry needs users to authenticate even for public packages, and its scope would have to be
+the GitHub owner (`@ang3lkar`), not `@angelkar`.
+
+Publishing, pushing and creating a release are all public and hard to undo — confirm with the user
+before each one unless they've asked for that step.
+
+1. **Bump the version** with `npm version patch|minor|major`. This makes a commit (message is the
+   bare version, e.g. `0.1.1`) and an annotated `vX.Y.Z` tag, both local only. The user usually
+   does this step themselves.
+2. **Draft the release notes and stop for review.** Write them (see below) to a file in the
+   scratchpad, give the user its full absolute path, and wait. They may edit the file directly.
+   Don't publish, push or release until they say the notes are ready, and re-read the file
+   afterwards so step 6 uses their edited version.
+3. **Publish to npm** with `npm publish`. `prepublishOnly` runs lint, typecheck, unit tests and the
+   build first. Run `npm publish --dry-run` beforehand to check the package contents. The user must
+   be logged in to npm (`npm whoami` returns 401 otherwise); ask them to run `! npm login`
+   themselves, and to have a 2FA code ready.
+4. **Verify** with `npm view @angelkar/bull-cli time --json --prefer-online`. Without
+   `--prefer-online`, `npm view` can show a cached copy that still lacks the new version.
+5. **Push** the version commit and its tag together: `git push origin main vX.Y.Z`. The tag points
+   at the version commit, so `main` must go up with it.
+6. **Create the GitHub Release** with `gh release create vX.Y.Z --verify-tag --title "vX.Y.Z"
+   --notes-file <notes.md>`. `v0.1.0` was published without a GitHub Release.
+
+Release notes are written for people who use the tool, from `git log vPREV..vX.Y.Z`:
+- A one-line summary, then `## Fixed` and `## Improved` sections (omit an empty one), and an
+  `## Install` section with `npm install -g @angelkar/bull-cli@X.Y.Z`.
+- Describe each change by what the user sees, not how it was built.
+- Leave out commits that don't change the installed tool: seed script, CI, tests, the project page
+  (`site/`), docs.
+
+`gh` and `npm` calls that reach the network fail inside the Bash sandbox (TLS/socket errors) and
+need to run outside it.
+
 ## Multi-agent implementation pipeline
 
 This repo has dedicated subagents for feature work — `implementer`, `tester`, `reviewer`
