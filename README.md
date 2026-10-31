@@ -1,5 +1,9 @@
 # bull-cli
 
+[![npm downloads](https://img.shields.io/npm/dm/@angelkar/bull-cli)](https://www.npmjs.com/package/@angelkar/bull-cli)
+[![Tests](https://github.com/ang3lkar/bull-cli/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ang3lkar/bull-cli/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@angelkar/bull-cli)](https://www.npmjs.com/package/@angelkar/bull-cli)
+
 A terminal dashboard (TUI) for [BullMQ](https://github.com/taskforcesh/bullmq) job queues — the
 `bull-board` equivalent for your terminal. Point it at a Redis instance and browse queues, jobs,
 and job details without leaving the shell.
