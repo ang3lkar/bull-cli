@@ -65,6 +65,8 @@ export interface StoreDeps {
 
 export interface StoreOptions {
   redisUrl: string;
+  /** BullMQ key prefix the queues were discovered under, default `bull` (bullmq's own). */
+  prefix?: string;
   /** Auto-refresh interval, default 3000ms (spec). */
   pollIntervalMs?: number;
   /** Per-refresh timeout bound, default 5000ms. */
@@ -81,6 +83,8 @@ export interface StoreOptions {
 export interface DashboardSnapshot {
   connection: ConnectionStatus;
   redisUrl: string;
+  /** BullMQ key prefix in use, shown in the footer so it's clear which queues these are. */
+  prefix: string;
   queues: QueueInfo[];
   /** Last-known counts keyed by queue name, for the top-level queue table. */
   queueCounts: Readonly<Record<string, QueueCounts>>;
@@ -188,6 +192,7 @@ export interface DashboardSnapshot {
 export class DashboardStore {
   private readonly deps: StoreDeps;
   private readonly redisUrl: string;
+  private readonly prefix: string;
   private readonly pollIntervalMs: number;
   private readonly refreshTimeoutMs: number;
   private readonly toastDurationMs: number;
@@ -252,6 +257,7 @@ export class DashboardStore {
   constructor(deps: StoreDeps, opts: StoreOptions) {
     this.deps = deps;
     this.redisUrl = opts.redisUrl;
+    this.prefix = opts.prefix ?? 'bull';
     this.pollIntervalMs = opts.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.refreshTimeoutMs = opts.refreshTimeoutMs ?? DEFAULT_REFRESH_TIMEOUT_MS;
     this.toastDurationMs = opts.toastDurationMs ?? DEFAULT_TOAST_DURATION_MS;
@@ -281,6 +287,7 @@ export class DashboardStore {
     return Object.freeze({
       connection: this.connection,
       redisUrl: this.redisUrl,
+      prefix: this.prefix,
       queues: this.queues,
       queueCounts,
       navigationStack: this.navigationStack,

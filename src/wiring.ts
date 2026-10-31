@@ -129,7 +129,7 @@ export function createApp(
     syncRegistry: (names) => registry.sync(names),
   };
 
-  const store = new DashboardStore(deps, { redisUrl, pollIntervalMs, refreshTimeoutMs });
+  const store = new DashboardStore(deps, { redisUrl, prefix, pollIntervalMs, refreshTimeoutMs });
 
   async function start(): Promise<void> {
     await redis.connect().catch(() => {

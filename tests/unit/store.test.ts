@@ -143,6 +143,14 @@ describe('DashboardStore: refresh', () => {
     expect(snap.refreshing).toBe(false);
   });
 
+  it('exposes the BullMQ prefix in the snapshot, defaulting to bull', () => {
+    const deps = createFakeDeps({ queues: [], jobs: {}, details: {} });
+    const custom = track(new DashboardStore(deps, { redisUrl: 'redis://x', prefix: 'myapp' }));
+    const fallback = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    expect(custom.getSnapshot().prefix).toBe('myapp');
+    expect(fallback.getSnapshot().prefix).toBe('bull');
+  });
+
   it('handles zero discovered queues without crashing', async () => {
     const state: FakeState = { queues: [], jobs: {}, details: {} };
     const deps = createFakeDeps(state);

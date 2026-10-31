@@ -69,7 +69,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
         <Box flexGrow={1}>
           <Loading url={snapshot.redisUrl} />
         </Box>
-        <Footer redisUrl={snapshot.redisUrl} />
+        <Footer redisUrl={snapshot.redisUrl} prefix={snapshot.prefix} />
       </Box>
     );
   }
@@ -86,7 +86,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
         <Box flexGrow={1}>
           <EmptyState url={snapshot.redisUrl} />
         </Box>
-        <Footer redisUrl={snapshot.redisUrl} />
+        <Footer redisUrl={snapshot.redisUrl} prefix={snapshot.prefix} />
       </Box>
     );
   }
@@ -162,7 +162,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
         )}
       </Box>
       <Toast toasts={snapshot.toasts} />
-      <Footer redisUrl={snapshot.redisUrl} />
+      <Footer redisUrl={snapshot.redisUrl} prefix={snapshot.prefix} />
     </Box>
   );
 }
