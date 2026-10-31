@@ -24,19 +24,8 @@
  * script refuses to run against a non-localhost host unless `--force` is
  * passed — and that check runs before any Redis connection is attempted.
  *
- * Note: BullMQ *queue names themselves* must not contain colons — bullmq
- * 5.x rejects them outright (`new Queue('billing:invoices', ...)` throws
- * synchronously, "Queue name cannot contain :") — so the demo queues
- * created here via `trackQueue` use plain names (`emailQ`, `smsQ`,
- * `reportQ`, ...). A colon-containing name can still exist in Redis via an
- * older bullmq version or another client, though, and `discovery.ts`
- * correctly reports it (see `tests/integration/discovery.test.ts`'s
- * equivalent case) even though it can never be *opened*. `seedBillingInvoices`
- * demonstrates exactly that shape via a raw `HSET` (bypassing bullmq's
- * `Queue` constructor entirely, the only way such a key can be produced) —
- * safe to seed now that `DashboardStore`/`wiring.ts` isolate a per-queue
- * open/fetch failure (toast + empty job list) instead of treating it as a
- * fatal whole-session connection error.
+ * Note: BullMQ queue names must not contain colons (`new Queue('a:b')` throws), so
+ * the demo queues use plain names (`emailQ`, `smsQ`, `reportQ`, ...).
  */
 import { Queue, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
@@ -81,8 +70,6 @@ const workerConnection = { ...connection, maxRetriesPerRequest: null } as Connec
 
 const openQueues: Queue[] = [];
 const openWorkers: Array<Worker<unknown, unknown, string>> = [];
-/** Raw client for the `billing:invoices` meta-key demo (see `seedBillingInvoices`) — not a bullmq `Queue`, disconnected (not `.close()`d) in the `finally` block below. */
-let rawRedis: Redis | undefined;
 
 function trackQueue(name: string): Queue {
   const queue = new Queue(name, { connection });
@@ -233,26 +220,6 @@ async function seedProgressQ(): Promise<SummaryRow> {
 }
 
 /**
- * Writes a raw `bull:billing:invoices:meta` hash field directly via ioredis
- * — bypassing bullmq's `Queue` constructor entirely, since that's the only
- * way a colon-containing queue name can end up in Redis (bullmq itself
- * rejects it). Demonstrates that the dashboard now handles an un-openable
- * discovered queue gracefully: it appears in the sidebar (sorted
- * alphabetically, so it lands near the top), shows an empty job list with a
- * toast rather than a fatal full-screen error, and the rest of the
- * dashboard stays fully navigable.
- */
-async function seedBillingInvoices(): Promise<SummaryRow> {
-  rawRedis = new Redis(redisUrl, { maxRetriesPerRequest: null });
-  await rawRedis.hset('bull:billing:invoices:meta', 'opts.maxLenEvents', '10000');
-  return {
-    queue: 'billing:invoices',
-    detail:
-      'un-openable (colon-named) — demonstrates the per-queue toast + empty list, not a crash',
-  };
-}
-
-/**
  * Holds one job "active" on a dedicated queue for ~60s via a blocked Worker,
  * so the Active tab has something in it right after seeding. This keeps the
  * seed script alive for the duration (a detached worker would otherwise
@@ -349,12 +316,10 @@ async function main(): Promise<void> {
   await assertRedisReachable();
   console.warn(
     `About to obliterate (force) and reseed: ${targetQueueNames.join(', ')}. ` +
-      'Any existing data in these queues will be permanently lost. ' +
-      "Also (re)writing a raw 'bull:billing:invoices:meta' key (harmless idempotent HSET, not a bullmq queue).",
+      'Any existing data in these queues will be permanently lost.',
   );
 
   const summary: SummaryRow[] = [];
-  summary.push(await seedBillingInvoices());
   summary.push(await seedEmailQ());
   summary.push(await seedSmsQ());
   summary.push(await seedReportQ());
@@ -390,5 +355,4 @@ main()
   .finally(async () => {
     await Promise.all(openWorkers.map((worker) => worker.close()));
     await Promise.all(openQueues.map((queue) => queue.close()));
-    rawRedis?.disconnect();
   });
