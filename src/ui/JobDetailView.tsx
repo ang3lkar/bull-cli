@@ -128,59 +128,67 @@ export function JobDetailView({ detail, queueName }: JobDetailViewProps) {
   const timings = jobTimings(detail.timestamps);
 
   return (
-    <Box borderStyle="round" flexDirection="row" paddingX={1}>
+    // When the job doesn't fit the terminal, the box shrinks to the space left
+    // and clips what's below its bottom edge. The columns' contents sit in
+    // non-shrinking wrappers: left to shrink, Ink squeezes each section below
+    // its text's height and draws lines on top of one another.
+    <Box borderStyle="round" flexDirection="row" paddingX={1} overflow="hidden">
       <Box flexDirection="column" width={LEFT_COLUMN_WIDTH} flexShrink={0} marginRight={2}>
-        <MetaRow label="Job ID" value={detail.id} />
-        <MetaRow label="Job Name" value={detail.name} />
-        <StateRow state={detail.state} />
-        {queueName !== undefined && <MetaRow label="Queue" value={queueName} />}
-        <MetaRow label="Created at" value={formatClock(detail.timestamps.created)} />
-        <MetaRow label="Processed at" value={timestampOrDash(detail.timestamps.processed)} />
-        <MetaRow label="Finished at" value={timestampOrDash(detail.timestamps.finished)} />
-        {timings.waited !== null && <MetaRow label="Waited" value={timings.waited} />}
-        {timings.ran !== null && <MetaRow label="Ran" value={timings.ran} />}
-        <MetaRow
-          label="Attempts"
-          value={`${detail.attemptsMade} / ${attemptsLimit(detail.opts)}`}
-        />
-        <MetaRow label="Progress" value={progressLine} />
+        <Box flexDirection="column" flexShrink={0}>
+          <MetaRow label="Job ID" value={detail.id} />
+          <MetaRow label="Job Name" value={detail.name} />
+          <StateRow state={detail.state} />
+          {queueName !== undefined && <MetaRow label="Queue" value={queueName} />}
+          <MetaRow label="Created at" value={formatClock(detail.timestamps.created)} />
+          <MetaRow label="Processed at" value={timestampOrDash(detail.timestamps.processed)} />
+          <MetaRow label="Finished at" value={timestampOrDash(detail.timestamps.finished)} />
+          {timings.waited !== null && <MetaRow label="Waited" value={timings.waited} />}
+          {timings.ran !== null && <MetaRow label="Ran" value={timings.ran} />}
+          <MetaRow
+            label="Attempts"
+            value={`${detail.attemptsMade} / ${attemptsLimit(detail.opts)}`}
+          />
+          <MetaRow label="Progress" value={progressLine} />
 
-        <Box flexDirection="column" marginTop={1}>
-          <Text bold>Opts</Text>
-          <Text>{prettyJson(detail.opts)}</Text>
+          <Box flexDirection="column" marginTop={1}>
+            <Text bold>Opts</Text>
+            <Text>{prettyJson(detail.opts)}</Text>
+          </Box>
         </Box>
       </Box>
 
       <Box flexDirection="column" flexGrow={1}>
-        {detail.failedReason !== null && (
-          <Box marginBottom={1}>
-            <Text bold color="red">
-              ✖ {detail.failedReason}
-            </Text>
-          </Box>
-        )}
+        <Box flexDirection="column" flexShrink={0}>
+          {detail.failedReason !== null && (
+            <Box marginBottom={1}>
+              <Text bold color="red">
+                ✖ {detail.failedReason}
+              </Text>
+            </Box>
+          )}
 
-        <Text bold>Data</Text>
-        <Text>{prettyJson(detail.data)}</Text>
+          <Text bold>Data</Text>
+          <Text>{prettyJson(detail.data)}</Text>
 
-        {detail.returnvalue !== undefined && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text bold>Return Value</Text>
-            <Text>{prettyJson(detail.returnvalue)}</Text>
-          </Box>
-        )}
+          {detail.returnvalue !== undefined && (
+            <Box flexDirection="column" marginTop={1}>
+              <Text bold>Return Value</Text>
+              <Text>{prettyJson(detail.returnvalue)}</Text>
+            </Box>
+          )}
 
-        {detail.stacktrace.length > 0 && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text bold>Stacktrace</Text>
-            {classifyStack(detail.stacktrace).map((line, index) => (
-              // Lines have no identity beyond their position; the list is
-              // rebuilt whole on every render, never reordered.
-              // biome-ignore lint/suspicious/noArrayIndexKey: see above
-              <StackLineText key={index} line={line} />
-            ))}
-          </Box>
-        )}
+          {detail.stacktrace.length > 0 && (
+            <Box flexDirection="column" marginTop={1}>
+              <Text bold>Stacktrace</Text>
+              {classifyStack(detail.stacktrace).map((line, index) => (
+                // Lines have no identity beyond their position; the list is
+                // rebuilt whole on every render, never reordered.
+                // biome-ignore lint/suspicious/noArrayIndexKey: see above
+                <StackLineText key={index} line={line} />
+              ))}
+            </Box>
+          )}
+        </Box>
       </Box>
     </Box>
   );

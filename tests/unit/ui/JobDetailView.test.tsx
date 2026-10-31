@@ -1,3 +1,4 @@
+import { Box } from 'ink';
 import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
 import { formatClock } from '../../../src/core/format.js';
@@ -201,5 +202,33 @@ describe('JobDetailView', () => {
     expect(frame).toContain('at handler (/app/src/w.ts:1:1)');
     expect(frame).toContain('at x (/app/node_modules/y.js:1:1)');
     expect(frame).toContain('at z (/app/src/z.ts:2:2)');
+  });
+
+  it('clips at the bottom rather than overlapping lines when taller than the space left', () => {
+    const longStack = [
+      'Error: boom',
+      ...Array.from({ length: 20 }, (_, i) => `    at frame${i} (/app/node_modules/x/y.js:${i}:1)`),
+    ].join('\n');
+    const { lastFrame } = render(
+      <Box flexDirection="column" height={18}>
+        <JobDetailView
+          detail={baseDetail({ returnvalue: null, stacktrace: [longStack], failedReason: 'boom' })}
+        />
+      </Box>,
+    );
+    const lines = (lastFrame() ?? '').split('\n');
+
+    // Every heading keeps a line of its own instead of being drawn over.
+    for (const heading of ['Data', 'Return Value', 'Stacktrace']) {
+      expect(lines.some((line) => new RegExp(`│.*\\b${heading}\\s+│$`).test(line))).toBe(true);
+    }
+    // Frames run in order until the box's bottom edge cuts them off.
+    const frames = lines.flatMap((line) => line.match(/frame(\d+)/)?.[1] ?? []).map(Number);
+    expect(frames.length).toBeGreaterThan(0);
+    expect(frames).toEqual(frames.map((_, i) => i));
+    expect(frames).not.toContain(19);
+    // The box keeps its bottom border, inside the 18 rows.
+    expect(lines).toHaveLength(18);
+    expect(lines[17]).toMatch(/^╰─+╯$/);
   });
 });
