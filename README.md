@@ -8,6 +8,8 @@ A terminal dashboard (TUI) for [BullMQ](https://github.com/taskforcesh/bullmq) j
 `bull-board` equivalent for your terminal. Point it at a Redis instance and browse queues, jobs,
 and job details without leaving the shell.
 
+![bull-cli browsing queues, opening a failed job and retrying it](docs/demo.gif)
+
 ## Install
 
 ```
@@ -135,39 +137,22 @@ A missing file is perfectly fine and just falls back to defaults.
 
 ## Layout
 
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│ bull-cli v0.1.0                                                          │
-│ [Esc/h] Back    [r] Refresh    [q] Quit                                  │
-│                                                                          │
-│ [↑/↓] Move      [1-5] Status    [Enter] Detail    [/] Filter             │
-│                                                                          │
-│ Queues > emailQ                                                         │
-│ [Delayed](0) | Waiting (12) | Active (2) | Failed (1) | Completed (4)  │
-│                                                                          │
-│    ID          Name                 State     Attempts  CreatedAt        │
-│ ❯ 12          send-email            waiting          0  2026-07-26 ...  │
-│    ...                                                                   │
-│                                                                          │
-│                                                          Page 1 of 2      │
-│ redis://localhost:6379                                                  │
-└──────────────────────────────────────────────────────────────────────────┘
-```
-
 - **Queue list** — a full-width list with the queue name and lifecycle counters in order:
   delayed, waiting, active, failed, completed. Paused queues carry a `(paused)` marker.
 - **Job list** — a full-width `ID`, `Name`, `State`, `Attempts`, `CreatedAt` table. The name
   column expands to fill the terminal. The status header provides counts and selection feedback.
-- **Job detail** — queue and job metadata, pretty-printed data, return value, stacktrace, and
-  options.
+- **Job detail** — job metadata on the left (ID, name, state, dates, how long the job waited and
+  ran, attempts out of the limit, progress, options); the failure reason, data, return value and
+  stack trace on the right, with the first frame from your own code highlighted. It reloads on
+  every refresh, so it follows the job through a retry, a worker picking it up, and completion.
 - **Title bar** — the app's identity (`bull-cli v0.1.0`) and nothing else; the breadcrumb reports
   location, so the title bar never repeats it.
 - **Legend** — a k9s-style shortcut grid separating always-available keys (yellow) from
   view-contextual ones (cyan). It reserves a fixed height, so the breadcrumb and everything
   below it stay on the same row as you navigate.
 - **Breadcrumb** — the current location above the body content, one crumb per level of the
-  navigation stack: `Queues`, `Queues > emailQ`, `Queues > emailQ > job #43`.
-- **Status bar** — a compact Redis URL, with any password masked.
+  navigation stack: `Queues`, `Queues > emailQ`, `Queues > emailQ > failed > job #43`.
+- **Status bar** — a compact Redis URL, with any password masked, and the BullMQ key prefix.
 
 Only one view is visible at a time. `Enter` drills into the selected row; `Escape` or `h` returns to
 the previous screen, and `H` jumps all the way back to the queue dashboard from wherever you are.
