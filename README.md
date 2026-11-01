@@ -10,6 +10,36 @@ and job details without leaving the shell.
 
 ![bull-cli browsing queues, opening a failed job and retrying it](docs/demo.gif)
 
+## Why bull-cli?
+
+[bull-board](https://github.com/felixmosh/bull-board) is a web UI that you add to your app's
+server. bull-cli covers the same day-to-day work without that:
+
+- **You never leave the terminal.** Browse queues and jobs, read failures, and retry, promote,
+  delete or drain from the shell you're already in. Nothing to add to your app, no server to run
+  or expose: just point it at Redis.
+- **Stats as JSON.** `bull-cli --output json` prints every queue's counts as JSON, ready for `jq`,
+  scripts, cron jobs or CI checks. No dashboard, no interactive terminal needed.
+
+### Who it's for
+
+Developers and on-call engineers who run BullMQ and live in the terminal: you want to see what
+your queues are doing without opening a browser, or your app doesn't have bull-board set up at
+all.
+
+### When to use it
+
+- **Local development:** watch jobs flow through your queues while you work on a worker.
+- **Debugging a failure:** find the failed job, read its error and stack trace, fix the code and
+  retry it, all in one place.
+- **Incidents and production checks:** connect to a Redis you can reach (directly, over SSH or
+  through a `kubectl port-forward`) and see queue health straight away, with nothing deployed.
+- **Scripts and monitoring:** feed `--output json` into a cron job, a CI step or an alert, e.g.
+  "fail if any queue has failed jobs".
+
+Prefer bull-board when you want a dashboard your whole team can open in a browser, including
+people who don't use a terminal.
+
 ## Install
 
 Try it without installing:
