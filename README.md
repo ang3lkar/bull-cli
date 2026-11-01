@@ -12,6 +12,14 @@ and job details without leaving the shell.
 
 ## Install
 
+Try it without installing:
+
+```
+npx @angelkar/bull-cli --redis redis://localhost:6379
+```
+
+Or install it globally:
+
 ```
 npm install -g @angelkar/bull-cli
 ```
