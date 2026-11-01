@@ -5,6 +5,10 @@ import {
   displayTimestamp,
   formatClock,
   formatDuration,
+  formatEvery,
+  formatIterations,
+  formatRelativeNext,
+  formatSchedule,
   jobTimings,
   maskRedisUrl,
   normalizeProgress,
@@ -265,5 +269,64 @@ describe('statusForState', () => {
 
   it('has no status for an unknown state', () => {
     expect(statusForState('unknown')).toBeUndefined();
+  });
+});
+
+describe('formatEvery', () => {
+  it.each([
+    [0, '0ms'],
+    [500, '500ms'],
+    [1500, '1s 500ms'],
+    [30_000, '30s'],
+    [300_000, '5m'],
+    [90_000, '1m 30s'],
+    [5_400_000, '1h 30m'],
+    [3_600_000, '1h'],
+    [93_784_000, '1d 2h'],
+    [-5, '0ms'],
+  ])('formats %d ms as %s', (ms, expected) => {
+    expect(formatEvery(ms)).toBe(expected);
+  });
+});
+
+describe('formatSchedule', () => {
+  it('prefers the cron pattern', () => {
+    expect(formatSchedule({ pattern: '0 9 * * *', every: null })).toBe('0 9 * * *');
+  });
+
+  it('describes an every scheduler', () => {
+    expect(formatSchedule({ pattern: null, every: 300_000 })).toBe('every 5m');
+    expect(formatSchedule({ pattern: null, every: 30_000 })).toBe('every 30s');
+  });
+
+  it('falls back to a dash', () => {
+    expect(formatSchedule({ pattern: null, every: null })).toBe('—');
+  });
+});
+
+describe('formatRelativeNext', () => {
+  const now = 1_000_000;
+
+  it.each([
+    [now + 45_000, 'in 45s'],
+    [now + 500, 'in 1s'],
+    [now, 'in 0s'],
+    [now + 120_000, 'in 2m'],
+    [now + 3 * 3_600_000, 'in 3h'],
+    [now + 2 * 86_400_000, 'in 2d'],
+    [now - 1, 'overdue'],
+    [null, '—'],
+  ])('formats %s as %s', (target, expected) => {
+    expect(formatRelativeNext(target, now)).toBe(expected);
+  });
+});
+
+describe('formatIterations', () => {
+  it('shows the bare count without a limit', () => {
+    expect(formatIterations(3, null)).toBe('3');
+  });
+
+  it('shows count/limit with a limit', () => {
+    expect(formatIterations(3, 24)).toBe('3/24');
   });
 });

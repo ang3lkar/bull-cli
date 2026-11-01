@@ -73,6 +73,13 @@ function createFakeDeps(state: FakeState): StoreDeps {
     getJobDetail: vi.fn(async (queueName: string, jobId: string) => {
       return state.details[detailKey(queueName, jobId)] ?? null;
     }),
+    fetchSchedulerPage: vi.fn(async () => ({
+      schedulers: [],
+      totalCount: 0,
+      page: 0,
+      pageCount: 1,
+    })),
+    getSchedulerDetail: vi.fn(async () => null),
     actions: {
       retry: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       delete: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
@@ -1059,13 +1066,13 @@ describe('DashboardStore: navigation (tab/queue/page)', () => {
     expect(store.getSnapshot().tab).toBe('delayed');
     expect(notified).toBe(0);
 
-    store.selectTab('completed');
+    store.selectTab('schedulers');
     await flush();
     notified = 0;
 
     // Last tab: stepping on does not wrap round to Delayed.
     store.selectAdjacentTab(1);
-    expect(store.getSnapshot().tab).toBe('completed');
+    expect(store.getSnapshot().tab).toBe('schedulers');
     expect(notified).toBe(0);
   });
 

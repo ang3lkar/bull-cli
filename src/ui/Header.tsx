@@ -1,12 +1,12 @@
 import { Box, Text } from 'ink';
 import type { NavigationView } from '../core/store.js';
-import type { JobStatus } from '../core/types.js';
+import type { Tab } from '../core/types.js';
 
 export interface HeaderProps {
   /** App version, taken from package.json at startup (e.g. `0.1.0`). */
   version: string;
   view?: NavigationView;
-  status?: JobStatus;
+  status?: Tab;
   /** Available content width, excluding the app's horizontal padding. */
   width?: number;
 }
@@ -34,7 +34,10 @@ function basicShortcutsFor(view: NavigationView | undefined): Shortcut[] {
     : [{ key: 'Esc/h', label: 'Back' }, { key: 'H', label: 'Home' }, ...GLOBAL_SHORTCUTS];
 }
 
-function jobActionShortcuts(status: JobStatus | undefined): Shortcut[] {
+function jobActionShortcuts(status: Tab | undefined): Shortcut[] {
+  if (status === 'schedulers') {
+    return [];
+  }
   return [
     ...(status === 'failed' ? [{ key: 'R', label: 'Retry' }] : []),
     ...(status !== 'active' ? [{ key: 'D', label: 'Delete' }] : []),
@@ -42,15 +45,27 @@ function jobActionShortcuts(status: JobStatus | undefined): Shortcut[] {
   ];
 }
 
-function shortcutsFor(view: NavigationView | undefined, status: JobStatus | undefined): Shortcut[] {
+function shortcutsFor(view: NavigationView | undefined, status: Tab | undefined): Shortcut[] {
   if (view?.kind === 'detail') {
     return [...jobActionShortcuts(status), { key: 'c', label: 'Copy data' }];
+  }
+  if (view?.kind === 'scheduler') {
+    return [{ key: 'Enter', label: 'Next job' }];
+  }
+  if (view?.kind === 'jobs' && status === 'schedulers') {
+    return [
+      { key: '↑/↓', label: 'Move' },
+      { key: '←/→', label: 'Tab' },
+      { key: '1-6', label: 'Jump' },
+      { key: 'b/n', label: 'Page' },
+      { key: 'Enter', label: 'Detail' },
+    ];
   }
   if (view?.kind === 'jobs') {
     return [
       { key: '↑/↓', label: 'Move' },
       { key: '←/→', label: 'Status' },
-      { key: '1-5', label: 'Jump' },
+      { key: '1-6', label: 'Jump' },
       { key: 'b/n', label: 'Page' },
       { key: 'Enter', label: 'Detail' },
       { key: '/', label: 'Filter' },
@@ -97,7 +112,7 @@ function ShortcutLegend({
   width,
 }: {
   view: NavigationView | undefined;
-  status: JobStatus | undefined;
+  status: Tab | undefined;
   width: number | undefined;
 }) {
   const basicWidth = width === undefined ? 22 : Math.min(22, Math.max(18, Math.floor(width / 3)));

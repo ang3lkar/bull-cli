@@ -187,7 +187,22 @@ async function seedEmailQ(): Promise<SummaryRow> {
   // resolving worker would eat the waiting jobs too (see seedCompleted doc).
   await seedCompleted(emailQ, 'emailQ', 10, { delivered: true });
   await seedWaiting(emailQ, 30, 'welcome-email');
-  return { queue: 'emailQ', detail: '10 completed, 30 waiting (3 pages)' };
+  // Schedulers live in the queue's `repeat` key, which the obliterate above
+  // wiped, so re-seeding doesn't accumulate them (upserts are idempotent anyway).
+  await emailQ.upsertJobScheduler(
+    'daily-digest',
+    { pattern: '0 9 * * *', tz: 'Europe/Athens' },
+    { name: 'send-digest', data: { template: 'digest', audience: 'all' } },
+  );
+  await emailQ.upsertJobScheduler(
+    'sync-contacts',
+    { every: 5 * 60 * 1000 },
+    { name: 'sync-contacts', data: { source: 'crm' }, opts: { attempts: 3 } },
+  );
+  return {
+    queue: 'emailQ',
+    detail: '10 completed, 30 waiting (3 pages), 2 job schedulers (cron+tz, every 5m)',
+  };
 }
 
 async function seedSmsQ(): Promise<SummaryRow> {
@@ -203,7 +218,15 @@ async function seedReportQ(): Promise<SummaryRow> {
   await reportQ.obliterate({ force: true });
   await seedFailed(reportQ, 'reportQ', 6);
   await seedDelayed(reportQ, 4, DELAYED_MS, 'monthly-report');
-  return { queue: 'reportQ', detail: '6 failed (real stacktraces), 4 delayed (5m)' };
+  await reportQ.upsertJobScheduler(
+    'hourly-cleanup',
+    { every: 60 * 60 * 1000, limit: 24 },
+    { name: 'cleanup', data: { olderThanDays: 7 } },
+  );
+  return {
+    queue: 'reportQ',
+    detail: '6 failed (real stacktraces), 4 delayed (5m), 1 job scheduler (every 1h, limit 24)',
+  };
 }
 
 async function seedProgressQ(): Promise<SummaryRow> {

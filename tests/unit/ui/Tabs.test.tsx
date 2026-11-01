@@ -14,6 +14,31 @@ describe('Tabs', () => {
       expect(frame).toContain('Delayed');
     });
 
+    it('shows the Schedulers tab last, with its own count', () => {
+      const { lastFrame } = render(
+        <Tabs
+          active="schedulers"
+          counts={{ active: 3, waiting: 15, completed: 0, failed: 1, delayed: 2 }}
+          schedulerCount={4}
+        />,
+      );
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('[Schedulers]   (4)');
+      expect(frame.indexOf('Completed')).toBeLessThan(frame.indexOf('Schedulers'));
+    });
+
+    it('leaves the Schedulers slot blank until its count is known', () => {
+      const { lastFrame } = render(
+        <Tabs
+          active="active"
+          counts={{ active: 3, waiting: 15, completed: 0, failed: 1, delayed: 2 }}
+          schedulerCount={null}
+        />,
+      );
+      const frame = lastFrame() ?? '';
+      expect(frame).toMatch(/Schedulers\s*$/);
+    });
+
     it('renders blank count slots when counts is omitted', () => {
       const { lastFrame } = render(<Tabs active="waiting" />);
       const frame = lastFrame() ?? '';

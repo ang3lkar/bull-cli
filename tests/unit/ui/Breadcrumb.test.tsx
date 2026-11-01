@@ -40,4 +40,31 @@ describe('Breadcrumb', () => {
     const { lastFrame } = render(<Breadcrumb view={{ kind: 'jobs', queueName: 'Queues' }} />);
     expect(lastFrame()).toContain('Queues > Queues');
   });
+
+  it('adds a schedulers crumb in the job list when that tab is selected', () => {
+    const { lastFrame } = render(
+      <Breadcrumb view={{ kind: 'jobs', queueName: 'emailQ' }} status="schedulers" />,
+    );
+    expect(lastFrame()).toContain('Queues > emailQ > schedulers');
+  });
+
+  it('shows the scheduler key in the scheduler detail', () => {
+    const { lastFrame } = render(
+      <Breadcrumb view={{ kind: 'scheduler', queueName: 'emailQ', key: 'daily-digest' }} />,
+    );
+    expect(lastFrame()).toContain('Queues > emailQ > schedulers > daily-digest');
+  });
+
+  it('continues the trail with the job opened from a scheduler', () => {
+    const { lastFrame } = render(
+      <Breadcrumb
+        view={{ kind: 'detail', queueName: 'emailQ', jobId: 'repeat:daily-digest:99' }}
+        status="schedulers"
+        schedulerKey="daily-digest"
+      />,
+    );
+    expect(lastFrame()).toContain(
+      'Queues > emailQ > schedulers > daily-digest > job #repeat:daily-digest:99',
+    );
+  });
 });

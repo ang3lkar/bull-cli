@@ -14,6 +14,8 @@ import { JobDetailView } from './JobDetailView.js';
 import { JobTable } from './JobTable.js';
 import { Loading } from './Loading.js';
 import { QueueTable } from './QueueTable.js';
+import { SchedulerDetailView } from './SchedulerDetailView.js';
+import { SchedulerTable } from './SchedulerTable.js';
 import { SearchBar } from './SearchBar.js';
 import { Tabs } from './Tabs.js';
 import { Toast } from './Toast.js';
@@ -99,6 +101,13 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
       ? statusForState(snapshot.detail.state)
       : snapshot.tab;
 
+  // A job detail opened from a scheduler sits above that scheduler's view.
+  const schedulerView = snapshot.navigationStack.find((view) => view.kind === 'scheduler');
+  const openedFromScheduler =
+    snapshot.currentView.kind === 'detail' && schedulerView?.kind === 'scheduler'
+      ? schedulerView.key
+      : undefined;
+
   return (
     <Box flexDirection="column" height={rows} paddingTop={1} paddingX={1}>
       <Header
@@ -134,33 +143,65 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
           </>
         ) : snapshot.currentView.kind === 'jobs' ? (
           <>
-            <Breadcrumb view={snapshot.currentView} />
+            <Breadcrumb view={snapshot.currentView} status={snapshot.tab} />
             <Box marginTop={1}>
-              <Tabs active={snapshot.tab} counts={snapshot.tabCounts} />
-            </Box>
-            {(snapshot.search.active || snapshot.search.query !== '') && (
-              <Box marginTop={1}>
-                <SearchBar query={snapshot.search.query} active={snapshot.search.active} />
-              </Box>
-            )}
-            <Box marginTop={1}>
-              <JobTable
-                jobs={snapshot.visibleJobs}
-                status={snapshot.tab}
-                selectedJobId={snapshot.selectedJobId}
-                page={snapshot.page}
-                pageCount={snapshot.jobPage?.pageCount ?? 1}
-                width={contentWidth}
+              <Tabs
+                active={snapshot.tab}
                 counts={snapshot.tabCounts}
-                loading={snapshot.jobsLoading}
-                hiddenBySearch={snapshot.jobsHiddenBySearch}
-                searchQuery={snapshot.search.query}
+                schedulerCount={snapshot.schedulerCount}
               />
             </Box>
+            {snapshot.tab !== 'schedulers' &&
+              (snapshot.search.active || snapshot.search.query !== '') && (
+                <Box marginTop={1}>
+                  <SearchBar query={snapshot.search.query} active={snapshot.search.active} />
+                </Box>
+              )}
+            <Box marginTop={1}>
+              {snapshot.tab === 'schedulers' ? (
+                <SchedulerTable
+                  schedulers={snapshot.schedulerPage?.schedulers ?? []}
+                  selectedKey={snapshot.selectedSchedulerKey}
+                  page={snapshot.page}
+                  pageCount={snapshot.schedulerPage?.pageCount ?? 1}
+                  width={contentWidth}
+                  loading={snapshot.jobsLoading}
+                />
+              ) : (
+                <JobTable
+                  jobs={snapshot.visibleJobs}
+                  status={snapshot.tab}
+                  selectedJobId={snapshot.selectedJobId}
+                  page={snapshot.page}
+                  pageCount={snapshot.jobPage?.pageCount ?? 1}
+                  width={contentWidth}
+                  counts={snapshot.tabCounts}
+                  loading={snapshot.jobsLoading}
+                  hiddenBySearch={snapshot.jobsHiddenBySearch}
+                  searchQuery={snapshot.search.query}
+                />
+              )}
+            </Box>
+          </>
+        ) : snapshot.currentView.kind === 'scheduler' ? (
+          <>
+            <Breadcrumb view={snapshot.currentView} />
+            {snapshot.schedulerDetailLoading || snapshot.schedulerDetail === null ? (
+              <Text dimColor>Loading scheduler detail…</Text>
+            ) : (
+              <SchedulerDetailView
+                detail={snapshot.schedulerDetail}
+                queueName={snapshot.currentView.queueName}
+              />
+            )}
           </>
         ) : (
           <>
-            <Breadcrumb view={snapshot.currentView} status={snapshot.tab} />
+            <Breadcrumb
+              view={snapshot.currentView}
+              status={snapshot.tab}
+              schedulerKey={openedFromScheduler}
+            />
             {snapshot.detailLoading || snapshot.detail === null ? (
               <Text dimColor>Loading job detail…</Text>
             ) : (

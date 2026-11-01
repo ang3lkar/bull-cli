@@ -7,11 +7,15 @@ import type {
   JobStatus,
   JobSummary,
   QueueInfo,
+  SchedulerDetail,
+  SchedulerPage,
+  SchedulerSummary,
+  Tab,
   Toast,
 } from './types.js';
 
-/** Status lifecycle order used by the job-list header and `1`-`5` shortcuts. */
-const TAB_ORDER: JobStatus[] = ['delayed', 'waiting', 'active', 'failed', 'completed'];
+/** Tab order used by the job-list header and `1`-`6` shortcuts; Schedulers is last. */
+const TAB_ORDER: Tab[] = ['delayed', 'waiting', 'active', 'failed', 'completed', 'schedulers'];
 
 const DEFAULT_POLL_INTERVAL_MS = 3000;
 /**
@@ -30,7 +34,8 @@ export type Focus = 'sidebar' | 'jobs';
 export type NavigationView =
   | { kind: 'queues' }
   | { kind: 'jobs'; queueName: string }
-  | { kind: 'detail'; queueName: string; jobId: string };
+  | { kind: 'detail'; queueName: string; jobId: string }
+  | { kind: 'scheduler'; queueName: string; key: string };
 
 export type QueueCounts = Record<JobStatus, number>;
 
@@ -47,6 +52,14 @@ export interface StoreDeps {
   /** Fetches counts without loading a page. Optional for lightweight test fakes. */
   fetchQueueCounts?(queueName: string): Promise<QueueCounts>;
   getJobDetail(queueName: string, jobId: string): Promise<JobDetail | null>;
+  fetchSchedulerPage(queueName: string, page: number): Promise<SchedulerPage>;
+  /**
+   * Scheduler count for the Schedulers tab label, fetched with every refresh
+   * of a job-status tab (the scheduler tab itself takes it from the page).
+   * Optional for lightweight test fakes.
+   */
+  fetchSchedulerCount?(queueName: string): Promise<number>;
+  getSchedulerDetail(queueName: string, key: string): Promise<SchedulerDetail | null>;
   /** Writes text to the system clipboard. */
   copyToClipboard?(text: string): Promise<void>;
   actions: {
@@ -91,9 +104,16 @@ export interface DashboardSnapshot {
   navigationStack: readonly NavigationView[];
   currentView: NavigationView;
   selectedQueueName: string | null;
-  tab: JobStatus;
+  tab: Tab;
   page: number;
   jobPage: JobPage | null;
+  /** Current page of the Schedulers tab; `null` on every other tab and while loading. */
+  schedulerPage: SchedulerPage | null;
+  /** Scheduler count of the SELECTED queue (Schedulers tab label), `null` until first known. */
+  schedulerCount: number | null;
+  selectedSchedulerKey: string | null;
+  schedulerDetail: SchedulerDetail | null;
+  schedulerDetailLoading: boolean;
   /**
    * Last-known job count for every status tab of the SELECTED queue — the
    * selected queue's own entry in the same `queueCounts` cache the
@@ -207,9 +227,14 @@ export class DashboardStore {
   private readonly queueCountsByName = new Map<string, QueueCounts>();
   private navigationStack: NavigationView[] = [{ kind: 'queues' }];
   private selectedQueueName: string | null = null;
-  private tab: JobStatus = 'active';
+  private tab: Tab = 'active';
   private page = 0;
   private jobPage: JobPage | null = null;
+  private schedulerPage: SchedulerPage | null = null;
+  private readonly schedulerCountByName = new Map<string, number>();
+  private selectedSchedulerKey: string | null = null;
+  private schedulerDetail: SchedulerDetail | null = null;
+  private schedulerDetailLoading = false;
   private selectedJobId: string | null = null;
   private searchActive = false;
   private searchQuery = '';
@@ -296,6 +321,14 @@ export class DashboardStore {
       tab: this.tab,
       page: this.page,
       jobPage: this.jobPage,
+      schedulerPage: this.schedulerPage,
+      schedulerCount:
+        this.selectedQueueName !== null
+          ? (this.schedulerCountByName.get(this.selectedQueueName) ?? null)
+          : null,
+      selectedSchedulerKey: this.selectedSchedulerKey,
+      schedulerDetail: this.schedulerDetail,
+      schedulerDetailLoading: this.schedulerDetailLoading,
       tabCounts:
         this.selectedQueueName !== null
           ? (this.queueCountsByName.get(this.selectedQueueName) ?? null)
@@ -500,16 +533,45 @@ export class DashboardStore {
 
       if (queueName === null) {
         this.jobPage = null;
+        this.schedulerPage = null;
         this.selectedJobId = null;
-      } else {
-        const prevJobs = this.jobPage?.jobs ?? [];
-        const prevSelectedJobId = this.selectedJobId;
+        this.selectedSchedulerKey = null;
+      } else if (this.tab === 'schedulers') {
+        const prevSchedulers = this.schedulerPage?.schedulers ?? [];
+        const prevKey = this.selectedSchedulerKey;
 
-        const jobPage = await this.deps.fetchJobPage(queueName, this.tab, this.page);
+        const schedulerPage = await this.deps.fetchSchedulerPage(queueName, this.page);
         if (myGen !== this.refreshGeneration) {
           return;
         }
 
+        this.page = schedulerPage.page;
+        this.schedulerPage = schedulerPage;
+        this.schedulerCountByName.set(queueName, schedulerPage.totalCount);
+        this.selectedSchedulerKey = this.resolveSelectedSchedulerKey(
+          prevKey,
+          prevSchedulers,
+          schedulerPage.schedulers,
+        );
+      } else {
+        const prevJobs = this.jobPage?.jobs ?? [];
+        const prevSelectedJobId = this.selectedJobId;
+
+        // The scheduler count rides along with the page fetch (one ZCARD, in
+        // parallel) so the Schedulers tab label stays current. A failure there
+        // must never fail the job page, so it settles to `null` instead.
+        const countPromise = this.deps.fetchSchedulerCount?.(queueName).catch(() => null);
+        const [jobPage, schedulerCount] = await Promise.all([
+          this.deps.fetchJobPage(queueName, this.tab, this.page),
+          countPromise,
+        ]);
+        if (myGen !== this.refreshGeneration) {
+          return;
+        }
+
+        if (typeof schedulerCount === 'number') {
+          this.schedulerCountByName.set(queueName, schedulerCount);
+        }
         this.page = jobPage.page;
         this.jobPage = jobPage;
         this.queueCountsByName.set(queueName, jobPage.counts);
@@ -527,6 +589,7 @@ export class DashboardStore {
         return;
       }
       this.jobPage = null;
+      this.schedulerPage = null;
       // Deliberately NOT touching `queueCountsByName` here: it's keyed per
       // queue name, so a failing `fetchJobPage` for `queueName` simply
       // leaves that queue's entry as whatever it last was — this cycle's
@@ -542,6 +605,7 @@ export class DashboardStore {
       // `jobFetchErrorQueue`), so the empty job table is the persistent
       // signal of an ongoing failure.
       this.selectedJobId = null;
+      this.selectedSchedulerKey = null;
       if (this.jobFetchErrorQueue !== queueName) {
         this.jobFetchErrorQueue = queueName;
         const target = queueName !== null ? `queue "${queueName}"` : 'queues';
@@ -578,6 +642,10 @@ export class DashboardStore {
    */
   private async refreshOpenDetail(myGen: number): Promise<void> {
     const view = this.currentView();
+    if (view.kind === 'scheduler') {
+      await this.refreshOpenSchedulerDetail(myGen, view);
+      return;
+    }
     if (view.kind !== 'detail' || this.detail === null) {
       return;
     }
@@ -596,6 +664,31 @@ export class DashboardStore {
       return;
     }
     this.detail = detail;
+  }
+
+  /** Scheduler counterpart of `refreshOpenDetail`: reloads the open scheduler, closing the view if it was removed. */
+  private async refreshOpenSchedulerDetail(
+    myGen: number,
+    view: Extract<NavigationView, { kind: 'scheduler' }>,
+  ): Promise<void> {
+    if (this.schedulerDetail === null) {
+      return;
+    }
+    let detail: SchedulerDetail | null;
+    try {
+      detail = await this.deps.getSchedulerDetail(view.queueName, view.key);
+    } catch {
+      return;
+    }
+    if (myGen !== this.refreshGeneration || this.currentView() !== view) {
+      return;
+    }
+    if (detail === null) {
+      this.popView();
+      this.pushToast(`Scheduler ${view.key} no longer exists`);
+      return;
+    }
+    this.schedulerDetail = detail;
   }
 
   /** Preserves the selected queue by name; clamps to the nearest remaining queue (by its old index) if it vanished, or `null` if none are left. */
@@ -640,6 +733,23 @@ export class DashboardStore {
     const oldIndex = prevJobs.findIndex((j) => j.id === prevId);
     const clamped = oldIndex < 0 ? 0 : Math.min(oldIndex, nextJobs.length - 1);
     return nextJobs[clamped].id;
+  }
+
+  /** Preserves the selected scheduler by key; clamps to the nearest remaining one (by its old index), or `null` if the page is empty. */
+  private resolveSelectedSchedulerKey(
+    prevKey: string | null,
+    prevSchedulers: SchedulerSummary[],
+    nextSchedulers: SchedulerSummary[],
+  ): string | null {
+    if (nextSchedulers.length === 0) {
+      return null;
+    }
+    if (prevKey !== null && nextSchedulers.some((s) => s.key === prevKey)) {
+      return prevKey;
+    }
+    const oldIndex = prevSchedulers.findIndex((s) => s.key === prevKey);
+    const clamped = oldIndex < 0 ? 0 : Math.min(oldIndex, nextSchedulers.length - 1);
+    return nextSchedulers[clamped].key;
   }
 
   /** Starts (or restarts) the 3s auto-refresh interval. Safe to call repeatedly. */
@@ -726,6 +836,10 @@ export class DashboardStore {
       this.detail = null;
       this.detailLoading = false;
     }
+    if (leaving.kind === 'scheduler') {
+      this.schedulerDetail = null;
+      this.schedulerDetailLoading = false;
+    }
     this.emit();
   }
 
@@ -739,12 +853,11 @@ export class DashboardStore {
     if (this.navigationStack.length === 1) {
       return;
     }
-    const leaving = this.currentView();
     this.navigationStack = [{ kind: 'queues' }];
-    if (leaving.kind === 'detail') {
-      this.detail = null;
-      this.detailLoading = false;
-    }
+    this.detail = null;
+    this.detailLoading = false;
+    this.schedulerDetail = null;
+    this.schedulerDetailLoading = false;
     this.emit();
   }
 
@@ -778,9 +891,9 @@ export class DashboardStore {
     void this.refresh();
   }
 
-  /** Selects a status tab by value or (1-based) index, matching the spec's `1`-`5` keys. */
-  selectTab(statusOrIndex: JobStatus | number): void {
-    let status: JobStatus | undefined;
+  /** Selects a tab by value or (1-based) index, matching the `1`-`6` keys. */
+  selectTab(statusOrIndex: Tab | number): void {
+    let status: Tab | undefined;
     if (typeof statusOrIndex === 'number') {
       const idx = statusOrIndex - 1;
       status = idx >= 0 && idx < TAB_ORDER.length ? TAB_ORDER[idx] : undefined;
@@ -798,8 +911,8 @@ export class DashboardStore {
   }
 
   /**
-   * Steps one status tab along the job lifecycle — `1` forwards (towards
-   * Completed), `-1` backwards — for the job list's `→`/`←` keys. Clamped
+   * Steps one tab along the tab row — `1` forwards (towards Schedulers),
+   * `-1` backwards — for the job list's `→`/`←` keys. Clamped
    * at both ends rather than wrapping, matching queue navigation and
    * pagination.
    *
@@ -819,6 +932,8 @@ export class DashboardStore {
   private resetQueueOrTabSwitch(): void {
     this.page = 0;
     this.jobPage = null;
+    this.schedulerPage = null;
+    this.selectedSchedulerKey = null;
     // Every caller (`selectQueue`, `selectTab`, `pushJobsView`) triggers a
     // refresh immediately after, so this is always paired with a fetch that
     // will clear it. Paging deliberately does NOT come through here: it
@@ -829,24 +944,32 @@ export class DashboardStore {
     this.searchQuery = '';
   }
 
+  private currentPageCount(): number | null {
+    const page = this.tab === 'schedulers' ? this.schedulerPage : this.jobPage;
+    return page ? page.pageCount : null;
+  }
+
   nextPage(): void {
-    if (!this.jobPage || this.page >= this.jobPage.pageCount - 1) {
+    const pageCount = this.currentPageCount();
+    if (pageCount === null || this.page >= pageCount - 1) {
       return;
     }
     this.invalidateInFlightRefresh();
     this.page += 1;
     this.selectedJobId = null;
+    this.selectedSchedulerKey = null;
     this.emit();
     void this.refresh();
   }
 
   prevPage(): void {
-    if (!this.jobPage || this.page <= 0) {
+    if (this.currentPageCount() === null || this.page <= 0) {
       return;
     }
     this.invalidateInFlightRefresh();
     this.page -= 1;
     this.selectedJobId = null;
+    this.selectedSchedulerKey = null;
     this.emit();
     void this.refresh();
   }
@@ -881,6 +1004,28 @@ export class DashboardStore {
     this.emit();
   }
 
+  /** Moves the scheduler selection down, clamped at the end of the page. */
+  selectNextScheduler(): void {
+    this.moveSchedulerSelection(1);
+  }
+
+  /** Moves the scheduler selection up, clamped at the start of the page. */
+  selectPrevScheduler(): void {
+    this.moveSchedulerSelection(-1);
+  }
+
+  private moveSchedulerSelection(direction: 1 | -1): void {
+    const schedulers = this.schedulerPage?.schedulers ?? [];
+    if (this.tab !== 'schedulers' || schedulers.length === 0) {
+      return;
+    }
+    this.invalidateInFlightRefresh();
+    const idx = schedulers.findIndex((s) => s.key === this.selectedSchedulerKey);
+    const nextIdx = idx < 0 ? 0 : Math.min(Math.max(idx + direction, 0), schedulers.length - 1);
+    this.selectedSchedulerKey = schedulers[nextIdx].key;
+    this.emit();
+  }
+
   setFocus(focus: Focus): void {
     if (this.focus === focus) {
       return;
@@ -906,7 +1051,7 @@ export class DashboardStore {
    * never a stale query applied with no on-screen trace of it.
    */
   openSearch(): void {
-    if (this.searchActive) {
+    if (this.searchActive || this.tab === 'schedulers') {
       return;
     }
     this.searchActive = true;
@@ -967,9 +1112,18 @@ export class DashboardStore {
     if (this.currentView().kind !== 'jobs') {
       return;
     }
-    const queueName = this.selectedQueueName;
-    const jobId = this.selectedJobId;
+    await this.loadJobDetail(this.selectedQueueName, this.selectedJobId);
+  }
 
+  /** Loads a job's detail and, if it exists, pushes the job `detail` view onto the stack. */
+  private async loadJobDetail(queueName: string, jobId: string): Promise<void> {
+    // A second Enter while a load is in flight must not push a second frame.
+    if (this.detailLoading) {
+      return;
+    }
+    // View identity (not `refreshGeneration`): a poll must not drop a real
+    // Enter, but Esc/H while loading must not push onto the wrong stack.
+    const view = this.currentView();
     this.detailLoading = true;
     this.emit();
 
@@ -985,6 +1139,10 @@ export class DashboardStore {
     }
 
     this.detailLoading = false;
+    if (this.currentView() !== view) {
+      this.emit();
+      return;
+    }
     if (detail === null) {
       this.pushToast(`Job ${jobId} not found`);
       return;
@@ -992,6 +1150,73 @@ export class DashboardStore {
     this.detail = detail;
     this.navigationStack = [...this.navigationStack, { kind: 'detail', queueName, jobId }];
     this.emit();
+  }
+
+  // --- scheduler views ----------------------------------------------------
+
+  /**
+   * Enter on a scheduler row: loads the selected scheduler and pushes its
+   * detail view. A scheduler removed mid-flight, or a failed load, surfaces
+   * a toast instead (mirrors `openDetail`). A result that lands after the
+   * user already navigated elsewhere is dropped.
+   */
+  async openSchedulerDetail(): Promise<void> {
+    const view = this.currentView();
+    if (
+      view.kind !== 'jobs' ||
+      this.tab !== 'schedulers' ||
+      this.selectedQueueName === null ||
+      this.selectedSchedulerKey === null
+    ) {
+      return;
+    }
+    if (this.schedulerDetailLoading) {
+      return;
+    }
+    const queueName = this.selectedQueueName;
+    const key = this.selectedSchedulerKey;
+
+    this.schedulerDetailLoading = true;
+    this.emit();
+
+    let detail: SchedulerDetail | null;
+    try {
+      detail = await this.deps.getSchedulerDetail(queueName, key);
+    } catch (err) {
+      this.schedulerDetailLoading = false;
+      this.pushToast(
+        `Could not load scheduler ${key}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+
+    this.schedulerDetailLoading = false;
+    // Tab and queue switches don't change the stack, so check them too.
+    if (
+      this.currentView() !== view ||
+      this.tab !== 'schedulers' ||
+      this.selectedQueueName !== queueName
+    ) {
+      this.emit();
+      return;
+    }
+    if (detail === null) {
+      this.pushToast(`Scheduler ${key} not found`);
+      return;
+    }
+    this.schedulerDetail = detail;
+    this.navigationStack = [...this.navigationStack, { kind: 'scheduler', queueName, key }];
+    this.emit();
+  }
+
+  /** Enter in the scheduler detail: opens the job detail of its next delayed job, if it has one. */
+  async openSchedulerNextJob(): Promise<void> {
+    const view = this.currentView();
+    const nextJobId = this.schedulerDetail?.nextJobId ?? null;
+    if (view.kind !== 'scheduler' || nextJobId === null) {
+      return;
+    }
+    await this.loadJobDetail(view.queueName, nextJobId);
   }
 
   closeDetail(): void {
@@ -1178,6 +1403,9 @@ export class DashboardStore {
     const view = this.currentView();
     if (view.kind === 'detail') {
       return { queueName: view.queueName, jobId: view.jobId };
+    }
+    if (view.kind === 'scheduler' || this.tab === 'schedulers') {
+      return null;
     }
     if (this.selectedQueueName === null || this.selectedJobId === null) {
       return null;

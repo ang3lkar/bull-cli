@@ -13,6 +13,7 @@ import { discoverQueues } from './core/discovery.js';
 import { fetchJobPage, fetchQueueCounts, getJobDetail } from './core/jobs.js';
 import { createQueueRegistry, type QueueRegistry } from './core/queueRegistry.js';
 import { createRedisClient } from './core/redis.js';
+import { fetchSchedulerCount, fetchSchedulerPage, getSchedulerDetail } from './core/schedulers.js';
 import { DashboardStore, type StoreDeps } from './core/store.js';
 import type { ActionResult } from './core/types.js';
 
@@ -46,7 +47,7 @@ export interface WiredApp {
  * shape the call site already expects, instead of escaping uncaught (a
  * `void store.someMethod()` call from `useKeymap` turns an uncaught
  * exception here into an unhandled promise rejection):
- * - `fetchJobPage`/`getJobDetail`: normalized into a REJECTED promise —
+ * - `fetchJobPage`/`getJobDetail` (and the scheduler fetches): normalized into a REJECTED promise —
  *   `DashboardStore.doRefreshWork`'s per-queue try/catch and `openDetail`'s
  *   own try/catch already handle that uniformly (toast, no crash).
  * - actions (`retry`/`delete`/`promote`/`duplicate`/`togglePause`/`drain`):
@@ -112,6 +113,12 @@ export function createApp(
       safeFetch(registry, queueName, (queue) => fetchQueueCounts(queue)),
     getJobDetail: (queueName, jobId) =>
       safeFetch(registry, queueName, (queue) => getJobDetail(queue, jobId)),
+    fetchSchedulerPage: (queueName, page) =>
+      safeFetch(registry, queueName, (queue) => fetchSchedulerPage(queue, page)),
+    fetchSchedulerCount: (queueName) =>
+      safeFetch(registry, queueName, (queue) => fetchSchedulerCount(queue)),
+    getSchedulerDetail: (queueName, key) =>
+      safeFetch(registry, queueName, (queue) => getSchedulerDetail(queue, key)),
     copyToClipboard: (text) => clipboard.write(text),
     actions: {
       retry: (queueName, jobId) =>

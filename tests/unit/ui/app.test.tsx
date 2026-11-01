@@ -72,6 +72,13 @@ function setup() {
       page(jobs[`${queueName}:${status}`] ?? [], requestedPage, counts(jobs, queueName)),
     ),
     getJobDetail: vi.fn(async (_queueName, jobId) => detail(jobId)),
+    fetchSchedulerPage: vi.fn(async () => ({
+      schedulers: [],
+      totalCount: 0,
+      page: 0,
+      pageCount: 1,
+    })),
+    getSchedulerDetail: vi.fn(async () => null),
     copyToClipboard: vi.fn(async () => {}),
     actions: {
       retry: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),

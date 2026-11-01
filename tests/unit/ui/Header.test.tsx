@@ -20,7 +20,7 @@ describe('Header', () => {
       <Header version="1.2.3" view={{ kind: 'jobs', queueName: 'email' }} />,
     );
     expect(lastFrame()).toContain('Quit');
-    expect(lastFrame()).toContain('1-5');
+    expect(lastFrame()).toContain('1-6');
     expect(lastFrame()).toContain('←/→');
     expect(lastFrame()).toContain('Status');
     expect(lastFrame()).toContain('Duplicate');
@@ -126,5 +126,33 @@ describe('Header', () => {
     expect(shortcutRows.length).toBeLessThanOrEqual(10);
     expect(lastFrame()).toContain('<r>');
     expect(lastFrame()).toContain('<↑/↓>');
+  });
+
+  it('advertises only read-only keys on the Schedulers tab', () => {
+    const frame =
+      render(
+        <Header version="1.2.3" view={{ kind: 'jobs', queueName: 'emailQ' }} status="schedulers" />,
+      ).lastFrame() ?? '';
+    expect(frame).toContain('1-6');
+    expect(frame).toContain('Detail');
+    expect(frame).not.toContain('Delete');
+    expect(frame).not.toContain('Duplicate');
+    expect(frame).not.toContain('Filter');
+    expect(frame).not.toContain('Retry');
+    expect(frame).not.toContain('Promote');
+  });
+
+  it('offers just the next-job key in the scheduler detail', () => {
+    const frame =
+      render(
+        <Header
+          version="1.2.3"
+          view={{ kind: 'scheduler', queueName: 'emailQ', key: 'k' }}
+          status="schedulers"
+        />,
+      ).lastFrame() ?? '';
+    expect(frame).toContain('Next job');
+    expect(frame).not.toContain('Delete');
+    expect(frame).not.toContain('Copy data');
   });
 });
