@@ -1,6 +1,6 @@
 {
   "name": "@angelkar/bull-cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "A terminal dashboard (TUI) for BullMQ job queues.",
   "keywords": [
