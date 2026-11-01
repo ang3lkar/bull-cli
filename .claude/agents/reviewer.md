@@ -14,7 +14,7 @@ Review for:
   asked, not just "do the tests pass")
 - Edge cases the tests may have missed (empty inputs, concurrency, error paths)
 - Security issues (injection, unvalidated input, secrets, unsafe deserialization)
-- Style/convention consistency with CLAUDE.md and surrounding code
+- Style/convention consistency with AGENTS.md and surrounding code
 - Unnecessary complexity or scope creep beyond the spec
 
 Be honest and critical — do not default to approving. If something is wrong,
