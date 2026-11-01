@@ -61,6 +61,7 @@ by scanning for `bull:*:meta` keys — no configuration file is required to get 
 
 ```
 bull-cli [options]
+bull-cli doctor [options]   # diagnose config, connection and queue discovery
 
 Options:
   --redis <url>      Redis connection URL (overrides REDIS_URL env var)
@@ -70,6 +71,19 @@ Options:
   -h, --help         Show help
   -v, --version      Show version
 ```
+
+## Troubleshooting
+
+If the dashboard shows no queues, the usual cause is a wrong key prefix or logical DB. Run:
+
+```
+bull-cli doctor
+```
+
+It checks your config files, the resolved connection (and where each setting came from), `PING`
+latency, the Redis server, and queue discovery, and hints at a likely fix (e.g. `Try --prefix myapp`).
+It keeps going after a failure and exits 1 if any check failed. Add `--output json` for
+machine-readable output. Passwords are always masked.
 
 Connection precedence (highest wins):
 

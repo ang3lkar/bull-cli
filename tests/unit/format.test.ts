@@ -13,6 +13,7 @@ import {
   maskRedisUrl,
   normalizeProgress,
   statusForState,
+  withRedisDb,
 } from '../../src/core/format.js';
 
 describe('normalizeProgress', () => {
@@ -328,5 +329,86 @@ describe('formatIterations', () => {
 
   it('shows count/limit with a limit', () => {
     expect(formatIterations(3, 24)).toBe('3/24');
+  });
+});
+
+describe('withRedisDb', () => {
+  it('sets or replaces the DB path', () => {
+    expect(withRedisDb('redis://localhost:6379', 1)).toBe('redis://localhost:6379/1');
+    expect(withRedisDb('redis://localhost:6379/5', 0)).toBe('redis://localhost:6379/0');
+    expect(withRedisDb('redis://user:****@host:6379', 2)).toBe('redis://user:****@host:6379/2');
+  });
+
+  it('returns unparseable input unchanged', () => {
+    expect(withRedisDb('nope', 1)).toBe('nope');
+  });
+});
+
+describe('maskRedisUrl on URLs that fail to parse', () => {
+  it('masks user:password userinfo', () => {
+    expect(maskRedisUrl('redis://user:pw@[::1')).toBe('redis://user:****@[::1');
+    expect(maskRedisUrl('redis://user:pw@h:bad')).toBe('redis://user:****@h:bad');
+  });
+
+  it('masks a password-only userinfo', () => {
+    expect(maskRedisUrl('redis://:pw@[::1')).toBe('redis://:****@[::1');
+  });
+
+  it('masks a bare userinfo with no colon', () => {
+    expect(maskRedisUrl('redis://pw@[::1')).toBe('redis://****@[::1');
+  });
+
+  it('masks up to the last @ so an @ inside the password cannot leak', () => {
+    expect(maskRedisUrl('redis://user:p@ss@[::1')).toBe('redis://user:****@[::1');
+  });
+
+  it('leaves unparseable URLs without credentials unchanged', () => {
+    expect(maskRedisUrl('redis://[::1')).toBe('redis://[::1');
+    expect(maskRedisUrl('not a url')).toBe('not a url');
+  });
+});
+
+describe('maskRedisUrl: scheme-less, foreign-scheme and query-string credentials', () => {
+  it('masks scheme-less userinfo (ioredis prepends redis:// to these)', () => {
+    expect(maskRedisUrl(':secret@host:6379')).toBe(':****@host:6379');
+    expect(maskRedisUrl('user:secret@host:6379')).toBe('user:****@host:6379');
+    expect(maskRedisUrl('secret@host:6379')).toBe('****@host:6379');
+  });
+
+  it('masks userinfo on non-redis schemes', () => {
+    expect(maskRedisUrl('http://u:secret@host:6379')).toBe('http://u:****@host:6379');
+  });
+
+  it('masks password/username query parameters', () => {
+    expect(maskRedisUrl('redis://host:6379?password=secret')).toBe(
+      'redis://host:6379?password=****',
+    );
+    expect(maskRedisUrl('redis://host:6379/2?db=1&username=bob&password=s3')).toBe(
+      'redis://host:6379/2?db=1&username=****&password=****',
+    );
+    expect(maskRedisUrl('http://host?password=secret#x')).toBe('http://host?password=****#x');
+    expect(maskRedisUrl('host:6379?password=secret')).not.toContain('secret');
+  });
+
+  it('masks both userinfo and query parameter together', () => {
+    const masked = maskRedisUrl('redis://u:one@host:6379?password=two');
+    expect(masked).not.toContain('one');
+    expect(masked).not.toContain('two');
+  });
+
+  it('leaves clean redis URLs byte-for-byte unchanged', () => {
+    expect(maskRedisUrl('redis://localhost:6379')).toBe('redis://localhost:6379');
+    expect(maskRedisUrl('rediss://host:6380/2?family=6')).toBe('rediss://host:6380/2?family=6');
+  });
+});
+
+describe('maskRedisUrl: sentinelPassword', () => {
+  it('masks it in parsed and fallback paths', () => {
+    expect(maskRedisUrl('redis://host:6379?sentinelPassword=secret')).toBe(
+      'redis://host:6379?sentinelPassword=****',
+    );
+    expect(maskRedisUrl('host:6379?sentinelPassword=secret')).toBe(
+      'host:6379?sentinelPassword=****',
+    );
   });
 });

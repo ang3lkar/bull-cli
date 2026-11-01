@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   ConfigError,
   parseConfigFile,
+  prefixSource,
   projectConfigPath,
+  redisUrlSource,
   resolvePrefix,
   resolveRedisUrl,
   resolveRefreshIntervalMs,
@@ -315,5 +317,18 @@ describe('resolveRefreshTimeoutMs', () => {
 
   it('falls back to the default when both configs are present but neither sets the key', () => {
     expect(resolveRefreshTimeoutMs({}, {})).toBe(5000);
+  });
+});
+
+describe('redisUrlSource / prefixSource', () => {
+  it('reports flag, env or default using the same rules as the resolvers', () => {
+    expect(redisUrlSource('redis://a', { REDIS_URL: 'redis://b' })).toBe('flag');
+    expect(redisUrlSource('  ', { REDIS_URL: 'redis://b' })).toBe('env');
+    expect(redisUrlSource(undefined, { REDIS_URL: ' ' })).toBe('default');
+    expect(redisUrlSource(undefined, {})).toBe('default');
+    expect(prefixSource('p', { BULLMQ_PREFIX: 'q' })).toBe('flag');
+    expect(prefixSource(undefined, { BULLMQ_PREFIX: 'q' })).toBe('env');
+    expect(prefixSource('', { BULLMQ_PREFIX: ' ' })).toBe('default');
+    expect(prefixSource(undefined, {})).toBe('default');
   });
 });

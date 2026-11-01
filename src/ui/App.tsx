@@ -87,7 +87,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
           width={contentWidth}
         />
         <Box flexGrow={1}>
-          <EmptyState url={snapshot.redisUrl} />
+          <EmptyState url={snapshot.redisUrl} prefix={snapshot.prefix} />
         </Box>
         <Footer redisUrl={snapshot.redisUrl} prefix={snapshot.prefix} />
       </Box>
