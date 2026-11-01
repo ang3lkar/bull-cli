@@ -51,12 +51,69 @@ function pad2(value: number): string {
  * normalize/append a trailing `/`).
  */
 export function maskRedisUrl(url: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return maskUnparseableUrl(url);
+  }
+  // Only trust the parse for real Redis schemes: `user:pw@host:6379` parses as
+  // scheme `user:` with an empty password, and would otherwise leak as-is.
+  if (parsed.protocol !== 'redis:' && parsed.protocol !== 'rediss:') {
+    return maskUnparseableUrl(url);
+  }
+  let changed = false;
+  if (parsed.password !== '') {
+    parsed.password = '****';
+    changed = true;
+  }
+  // ioredis merges query parameters into its options, so `?password=` authenticates.
+  for (const key of SECRET_QUERY_PARAMS) {
+    if (parsed.searchParams.has(key)) {
+      parsed.searchParams.set(key, '****');
+      changed = true;
+    }
+  }
+  return changed ? parsed.toString() : url;
+}
+
+const SECRET_QUERY_PARAMS = ['password', 'username', 'sentinelPassword'];
+
+/**
+ * Regex fallback for anything `maskRedisUrl` can't trust a `URL` parse for
+ * (unparseable input, no scheme, non-redis scheme): the password must still
+ * never reach the screen. Masks `password=`/`username=` query values, then the
+ * userinfo — everything before the LAST `@`, after `://` when there is one,
+ * else from the start of the string. `user:pw` → `user:****`, `:pw` → `:****`,
+ * a bare `pw` → `****`. No `@` means no userinfo to mask.
+ */
+function maskUnparseableUrl(url: string): string {
+  const withoutQuerySecrets = url.replace(
+    /([?&](?:password|username|sentinelPassword)=)[^&#]*/gi,
+    '$1****',
+  );
+  const at = withoutQuerySecrets.lastIndexOf('@');
+  if (at === -1) {
+    return withoutQuerySecrets;
+  }
+  const schemeEnd = withoutQuerySecrets.indexOf('://');
+  const start = schemeEnd !== -1 && schemeEnd < at ? schemeEnd + 3 : 0;
+  const userinfo = withoutQuerySecrets.slice(start, at);
+  const colon = userinfo.indexOf(':');
+  const masked = colon === -1 ? '****' : `${userinfo.slice(0, colon)}:****`;
+  return `${withoutQuerySecrets.slice(0, start)}${masked}${withoutQuerySecrets.slice(at)}`;
+}
+
+/**
+ * Returns `url` with its database path replaced by `/<db>` (e.g.
+ * `redis://host:6379` + 1 → `redis://host:6379/1`). Input is used as given, so
+ * pass an already-masked URL to keep credentials out. Unparseable input is
+ * returned unchanged.
+ */
+export function withRedisDb(url: string, db: number): string {
   try {
     const parsed = new URL(url);
-    if (parsed.password === '') {
-      return url;
-    }
-    parsed.password = '****';
+    parsed.pathname = `/${db}`;
     return parsed.toString();
   } catch {
     return url;

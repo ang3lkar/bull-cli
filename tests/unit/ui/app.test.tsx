@@ -149,7 +149,7 @@ describe('App: first-load states', () => {
     await store.refresh();
     const { lastFrame } = render(<App store={store} onQuit={onQuit} />);
     await flush();
-    expect(lastFrame()).toContain('No BullMQ queues found on redis://localhost:6379');
+    expect(lastFrame()).toContain('No BullMQ queues found under prefix');
     expect(lastFrame()).not.toContain('Discovering queues');
   });
 });

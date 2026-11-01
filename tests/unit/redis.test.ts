@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createRedisClient } from '../../src/core/redis.js';
+import { createDoctorRedisClient, createRedisClient } from '../../src/core/redis.js';
 import type { ConnectionStatus } from '../../src/core/types.js';
 
 describe('createRedisClient', () => {
@@ -64,5 +64,22 @@ describe('createRedisClient', () => {
     client.disconnect();
 
     expect(seen).toEqual([{ state: 'error', url, message: 'ECONNRESET' }]);
+  });
+});
+
+describe('createDoctorRedisClient', () => {
+  it('fails fast: lazy, no reconnection, one request retry, 5s connect timeout', () => {
+    const client = createDoctorRedisClient('redis://localhost:6379');
+    const opts = client.options;
+    expect(opts.lazyConnect).toBe(true);
+    expect(opts.maxRetriesPerRequest).toBe(1);
+    expect(opts.connectTimeout).toBe(5000);
+    expect(opts.commandTimeout).toBe(5000);
+    expect(opts.enableReadyCheck).toBe(false);
+    expect(opts.disableClientInfo).toBe(true);
+    expect(opts.retryStrategy?.(1)).toBeNull();
+    // an emitted error must not throw (listener attached)
+    expect(() => client.emit('error', new Error('boom'))).not.toThrow();
+    client.disconnect();
   });
 });

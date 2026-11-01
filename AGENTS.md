@@ -43,7 +43,7 @@ from coverage entirely (it's the process entrypoint, exercised only manually/e2e
 
 Integration and e2e tests each use their own Redis **logical DB** (not DB 0, so they never collide
 with `npm run seed` or each other): discovery=1, jobs=2, actions=3, e2e=4, wiring=5, registry=13,
-jsonOutput=6, schedulers=7, redis=14, sanity=15.
+jsonOutput=6, schedulers=7, doctor=8, redis=14, sanity=15.
 
 ## Architecture
 
@@ -83,6 +83,15 @@ A `Queue` name containing `:` is legal in Redis (written by another client/older
 `new Queue(name, ...)` throws *synchronously* for it — `wiring.ts`'s `safeFetch`/`safeAction`
 wrappers are what convert that throw into the shape each call site already expects (a rejected
 promise, or `{ ok: false }`) instead of letting it escape uncaught.
+
+### `bull-cli doctor` (`src/core/doctor.ts`)
+
+`runDoctor(deps)` runs a fixed, ordered list of checks (config, connection, ping, server, queues),
+never aborting early; once `ping` fails the Redis-dependent checks are `skip`. Everything external
+(fs, Redis client factory, clock, env) is injected, so it's unit-tested with fakes. The client comes
+from `createDoctorRedisClient` in `redis.ts` (fail-fast, unlike the dashboard's retrying client).
+`cli.tsx` dispatches `doctor` before the fail-fast config loading, so a broken config file is a failed
+check rather than an early exit. `EmptyState` shows prefix/DB hints and points at `doctor`.
 
 ### Refresh/polling model
 

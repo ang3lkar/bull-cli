@@ -23,7 +23,7 @@ function retryStrategy(times: number): number {
  * an `AggregateError` with an empty top-level `message`, so we fall back to
  * the nested error messages, then to an errno code, then to the error name.
  */
-function describeError(error: Error): string {
+export function describeError(error: Error): string {
   if (error.message) {
     return error.message;
   }
@@ -69,5 +69,42 @@ export function createRedisClient(
     onStatus?.({ state: 'error', url, message: describeError(error) });
   });
 
+  return client;
+}
+
+/** Per-command timeout for the doctor client (ms). */
+export const DOCTOR_COMMAND_TIMEOUT_MS = 5000;
+
+/**
+ * Creates a lazily-connecting ioredis client for `bull-cli doctor`. Unlike
+ * `createRedisClient` it must fail fast: no reconnection (`retryStrategy`
+ * returns `null`), a single request retry, a 5s connect timeout and a 5s
+ * `commandTimeout` (so a server that accepts the socket but never replies
+ * can't hang it), so an unreachable Redis produces a diagnosis instead of
+ * hanging. `enableReadyCheck: false` (doctor sends its own PING/INFO) and
+ * `disableClientInfo: true` (no CLIENT SETINFO round trips) keep it quick. Takes the URL
+ * string directly (as `createRedisClient` does) so `rediss:` TLS keeps working.
+ */
+export function createDoctorRedisClient(url: string): Redis {
+  const client = new Redis(url, {
+    lazyConnect: true,
+    retryStrategy: () => null,
+    maxRetriesPerRequest: 1,
+    connectTimeout: 5000,
+    // connectTimeout only covers the TCP/TLS handshake; a server that accepts
+    // the socket and then never replies (stalled tunnel, TLS-only endpoint)
+    // would hang AUTH/PING/INFO forever. This also covers the commands
+    // ioredis sends during connect().
+    commandTimeout: DOCTOR_COMMAND_TIMEOUT_MS,
+    // Doctor runs its own PING/INFO; the ready check would add an INFO and
+    // can console.warn on restricted ACL users.
+    enableReadyCheck: false,
+    // Skips the CLIENT SETINFO commands ioredis sends on connect; against a
+    // silent server they'd each wait out commandTimeout (~11s total, not ~5s).
+    disableClientInfo: true,
+  });
+  // ioredis emits 'error' on a failed attempt; without a listener Node treats
+  // it as fatal. The failure is reported via the rejected connect()/ping().
+  client.on('error', () => {});
   return client;
 }

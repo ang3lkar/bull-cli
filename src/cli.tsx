@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { performance } from 'node:perf_hooks';
 import { render } from 'ink';
 import meow from 'meow';
 import {
@@ -14,6 +15,8 @@ import {
   type UserConfig,
   userConfigPath,
 } from './config.js';
+import { doctorExitCode, formatDoctorReport, runDoctor } from './core/doctor.js';
+import { createDoctorRedisClient } from './core/redis.js';
 import { dumpQueuesJson } from './jsonOutput.js';
 import { createAltScreen } from './terminal.js';
 import { App } from './ui/App.js';
@@ -44,6 +47,10 @@ const cli = meow(
   `
 	Usage
 	  $ bull-cli [options]
+	  $ bull-cli doctor [options]
+
+	Commands
+	  doctor             Diagnose config, connection and queue discovery (supports --output json)
 
 	Options
 	  --redis <url>      Redis connection URL (overrides REDIS_URL env var)
@@ -58,6 +65,8 @@ const cli = meow(
 	  $ bull-cli --prefix myapp
 	  $ bull-cli --output json
 	  $ bull-cli --output json --queue email
+	  $ bull-cli doctor
+	  $ bull-cli doctor --output json
 `,
   {
     importMeta: import.meta,
@@ -113,7 +122,53 @@ async function runJsonOutputMode(redisUrl: string, prefix: string): Promise<void
   }
 }
 
+/**
+ * `bull-cli doctor`: never needs a TTY or the alt screen, and runs before the
+ * fail-fast config loading below — a broken config file is reported as a
+ * failed check instead of exiting early. All logic lives in core/doctor.ts.
+ */
+async function runDoctorCommand(): Promise<never> {
+  if (cli.flags.queue !== undefined) {
+    console.error("Error: --queue isn't supported with doctor");
+    process.exit(1);
+  }
+  if (cli.flags.output !== undefined && cli.flags.output !== 'json') {
+    console.error(`Error: unsupported --output value "${cli.flags.output}" (supported: json)`);
+    process.exit(1);
+  }
+  const report = await runDoctor({
+    redisFlag: cli.flags.redis,
+    prefixFlag: cli.flags.prefix,
+    env: process.env,
+    configPaths: {
+      user: userConfigPath(process.env, homedir()),
+      project: projectConfigPath(process.cwd()),
+    },
+    fileExists: existsSync,
+    readFile: (path) => readFileSync(path, 'utf8'),
+    createClient: createDoctorRedisClient,
+    now: () => performance.now(),
+    version: cli.pkg.version ?? '0.0.0',
+  });
+  const text =
+    cli.flags.output === 'json' ? JSON.stringify(report, null, 2) : formatDoctorReport(report);
+  process.stdout.write(`${text}\n`, () => process.exit(doctorExitCode(report)));
+  // Keep the promise pending until the write callback exits the process.
+  return new Promise<never>(() => {});
+}
+
 async function main(): Promise<void> {
+  const [command, ...extra] = cli.input;
+  if (command === 'doctor' && extra.length > 0) {
+    console.error(`Error: unknown command "${cli.input.join(' ')}"`);
+    process.exit(1);
+  } else if (command === 'doctor') {
+    await runDoctorCommand();
+  } else if (command !== undefined) {
+    console.error(`Error: unknown command "${command}"`);
+    process.exit(1);
+  }
+
   const redisUrl = resolveRedisUrl(cli.flags.redis, process.env);
   const prefix = resolvePrefix(cli.flags.prefix, process.env);
 

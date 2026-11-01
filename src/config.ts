@@ -62,6 +62,24 @@ export function resolvePrefix(flag: string | undefined, env: NodeJS.ProcessEnv):
   return DEFAULT_BULLMQ_PREFIX;
 }
 
+export type ConfigSource = 'flag' | 'env' | 'default';
+
+/** Which input `resolveRedisUrl` would pick: the flag, `REDIS_URL`, or the default. Pure. */
+export function redisUrlSource(flag: string | undefined, env: NodeJS.ProcessEnv): ConfigSource {
+  if (flag !== undefined && flag.trim() !== '') {
+    return 'flag';
+  }
+  return env.REDIS_URL !== undefined && env.REDIS_URL.trim() !== '' ? 'env' : 'default';
+}
+
+/** Which input `resolvePrefix` would pick: the flag, `BULLMQ_PREFIX`, or the default. Pure. */
+export function prefixSource(flag: string | undefined, env: NodeJS.ProcessEnv): ConfigSource {
+  if (flag !== undefined && flag.trim() !== '') {
+    return 'flag';
+  }
+  return env.BULLMQ_PREFIX !== undefined && env.BULLMQ_PREFIX.trim() !== '' ? 'env' : 'default';
+}
+
 /**
  * Parses a `redis[s]://[[username]:password@]host[:port][/db]` URL into the
  * discrete connection options `ioredis`/`bullmq` accept. Pure function — no
