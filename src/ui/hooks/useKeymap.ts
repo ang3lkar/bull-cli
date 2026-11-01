@@ -1,9 +1,5 @@
 import { type Key, useInput } from 'ink';
 import type { DashboardSnapshot, DashboardStore } from '../../core/store.js';
-import type { JobStatus } from '../../core/types.js';
-
-/** Status order matching the job-list shortcut row. */
-const TAB_ORDER: JobStatus[] = ['delayed', 'waiting', 'active', 'failed', 'completed'];
 
 /**
  * Single Ink `useInput` dispatcher for the whole app — every keybinding in
@@ -49,8 +45,8 @@ const TAB_ORDER: JobStatus[] = ['delayed', 'waiting', 'active', 'failed', 'compl
  *   global and detail-view states, but is ignored while a drain
  *   confirmation is pending (only `y`/`Y`/`n`/`N`/`Escape` are honored
  *   there) and is treated as a literal character while typing in search.
- * - **`←`/`→` step the status tabs** in the job list, alongside the `1`-`5`
- *   jumps: the vertical arrows move within a status, the horizontal ones
+ * - **`←`/`→` step the tabs** in the job list, alongside the `1`-`6`
+ *   jumps (`6` is Schedulers, whose own keys live in `handleSchedulersInput`): the vertical arrows move within a status, the horizontal ones
  *   move between them. They stay unbound in job detail, which has no tab
  *   row, and — being in `NAVIGATION_KEYS` — are inert while the search
  *   input is open rather than switching tabs out from under a filter.
@@ -103,10 +99,17 @@ export function useKeymap(
         handleQueueInput(store, snapshot, input, key);
         return;
       case 'jobs':
-        handleJobsInput(store, input, key);
+        if (snapshot.tab === 'schedulers') {
+          handleSchedulersInput(store, input, key);
+        } else {
+          handleJobsInput(store, input, key);
+        }
         return;
       case 'detail':
         handleDetailInput(store, input, key);
+        return;
+      case 'scheduler':
+        handleSchedulerDetailInput(store, input, key);
     }
   });
 }
@@ -227,6 +230,66 @@ function handleQueueInput(
   }
 }
 
+/** `←`/`→`, `1`-`6` and `b`/`n`, shared by the job-status tabs and the Schedulers tab. Returns whether the key was consumed. */
+function handleTabAndPageKeys(store: DashboardStore, input: string, key: Key): boolean {
+  if (key.leftArrow) {
+    store.selectAdjacentTab(-1);
+    return true;
+  }
+  if (key.rightArrow) {
+    store.selectAdjacentTab(1);
+    return true;
+  }
+  if (input >= '1' && input <= '6') {
+    store.selectTab(Number(input));
+    return true;
+  }
+  if (input === 'b') {
+    store.prevPage();
+    return true;
+  }
+  if (input === 'n') {
+    store.nextPage();
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Schedulers tab: read-only, so the job-only keys (`/`, `R`, `D`, `p`, `c`)
+ * are deliberately unbound here.
+ */
+function handleSchedulersInput(store: DashboardStore, input: string, key: Key): void {
+  if (key.escape || input === 'h') {
+    store.popView();
+    return;
+  }
+  if (key.upArrow) {
+    store.selectPrevScheduler();
+    return;
+  }
+  if (key.downArrow) {
+    store.selectNextScheduler();
+    return;
+  }
+  if (handleTabAndPageKeys(store, input, key)) {
+    return;
+  }
+  if (key.return) {
+    void store.openSchedulerDetail();
+  }
+}
+
+function handleSchedulerDetailInput(store: DashboardStore, input: string, key: Key): void {
+  if (key.escape || input === 'h') {
+    store.popView();
+    return;
+  }
+  if (key.return) {
+    void store.openSchedulerNextJob();
+  }
+}
+
 function handleJobsInput(store: DashboardStore, input: string, key: Key): void {
   if (key.escape || input === 'h') {
     store.popView();
@@ -244,24 +307,7 @@ function handleJobsInput(store: DashboardStore, input: string, key: Key): void {
     store.selectNextJob();
     return;
   }
-  if (key.leftArrow) {
-    store.selectAdjacentTab(-1);
-    return;
-  }
-  if (key.rightArrow) {
-    store.selectAdjacentTab(1);
-    return;
-  }
-  if (input >= '1' && input <= '5') {
-    store.selectTab(TAB_ORDER[Number(input) - 1]);
-    return;
-  }
-  if (input === 'b') {
-    store.prevPage();
-    return;
-  }
-  if (input === 'n') {
-    store.nextPage();
+  if (handleTabAndPageKeys(store, input, key)) {
     return;
   }
   if (key.return) {

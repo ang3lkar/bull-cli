@@ -186,3 +186,77 @@ export function statusForState(state: string): JobStatus | undefined {
       return undefined;
   }
 }
+
+const EVERY_UNITS: Array<[label: string, ms: number]> = [
+  ['d', 86_400_000],
+  ['h', 3_600_000],
+  ['m', 60_000],
+  ['s', 1000],
+  ['ms', 1],
+];
+
+/**
+ * Compact interval for an `every` scheduler, e.g. `30s`, `5m`, `1h 30m`,
+ * `500ms`: the two largest non-zero units (`1d 2h`, not `1d 2h 3m 4s`).
+ */
+export function formatEvery(ms: number): string {
+  let rest = Math.max(0, Math.round(ms));
+  if (rest === 0) {
+    return '0ms';
+  }
+  const parts: string[] = [];
+  for (const [label, size] of EVERY_UNITS) {
+    const amount = Math.floor(rest / size);
+    if (amount > 0) {
+      parts.push(`${amount}${label}`);
+      rest -= amount * size;
+    }
+    if (parts.length === 2) {
+      break;
+    }
+  }
+  return parts.join(' ');
+}
+
+/** The schedule column: the cron `pattern`, else `every <duration>`, else `—`. */
+export function formatSchedule(scheduler: {
+  pattern: string | null;
+  every: number | null;
+}): string {
+  if (scheduler.pattern !== null) {
+    return scheduler.pattern;
+  }
+  if (scheduler.every !== null) {
+    return `every ${formatEvery(scheduler.every)}`;
+  }
+  return '—';
+}
+
+/**
+ * Time until `target` relative to `now`, in one unit: `in 45s`, `in 2m`,
+ * `in 3h`, `in 2d`. `overdue` once it is in the past, `—` when unknown.
+ */
+export function formatRelativeNext(target: number | null, now: number): string {
+  if (target === null) {
+    return '—';
+  }
+  const diff = target - now;
+  if (diff < 0) {
+    return 'overdue';
+  }
+  if (diff < 60_000) {
+    return `in ${Math.ceil(diff / 1000)}s`;
+  }
+  if (diff < 3_600_000) {
+    return `in ${Math.floor(diff / 60_000)}m`;
+  }
+  if (diff < 86_400_000) {
+    return `in ${Math.floor(diff / 3_600_000)}h`;
+  }
+  return `in ${Math.floor(diff / 86_400_000)}d`;
+}
+
+/** Iterations column: `count`, or `count/limit` for a scheduler with a run limit. */
+export function formatIterations(count: number, limit: number | null): string {
+  return limit === null ? String(count) : `${count}/${limit}`;
+}

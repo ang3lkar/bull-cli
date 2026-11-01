@@ -1,6 +1,9 @@
 /** BullMQ job status buckets surfaced as dashboard tabs. */
 export type JobStatus = 'active' | 'waiting' | 'completed' | 'failed' | 'delayed';
 
+/** A tab in the jobs view: a job status bucket, or the queue's job schedulers. */
+export type Tab = JobStatus | 'schedulers';
+
 /** State of the Redis connection, as observed by the store/UI. */
 export type ConnectionStatus =
   | { state: 'connecting' }
@@ -71,3 +74,36 @@ export interface Toast {
  * `togglePauseQueue` went.
  */
 export type ActionResult = { ok: true; info?: string } | { ok: false; message: string };
+
+/** Row shown in the job scheduler list table. */
+export interface SchedulerSummary {
+  key: string;
+  name: string;
+  /** Cron pattern, or `null` for an `every` scheduler. */
+  pattern: string | null;
+  /** Repeat interval in milliseconds, or `null` for a cron scheduler. */
+  every: number | null;
+  tz: string | null;
+  /** Next run time (epoch millis), or `null` when unknown. */
+  next: number | null;
+  iterationCount: number;
+  limit: number | null;
+}
+
+/** Full scheduler payload shown in the scheduler detail view. */
+export interface SchedulerDetail extends SchedulerSummary {
+  startDate: number | null;
+  endDate: number | null;
+  offset: number | null;
+  template: { data: unknown; opts: unknown };
+  /** Id of the scheduler's next delayed job, confirmed to exist; `null` otherwise. */
+  nextJobId: string | null;
+}
+
+/** One page of the job scheduler list, soonest-running first. */
+export interface SchedulerPage {
+  schedulers: SchedulerSummary[];
+  totalCount: number;
+  page: number;
+  pageCount: number;
+}

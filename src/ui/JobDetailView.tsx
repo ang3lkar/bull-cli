@@ -27,7 +27,7 @@ const MAX_PAYLOAD_LINES = 20;
  * so that's normalized to the literal text `undefined` rather than crashing
  * on `.split`.
  */
-function prettyJson(value: unknown): string {
+export function prettyJson(value: unknown): string {
   const json = JSON.stringify(value, null, 2);
   const text = json === undefined ? 'undefined' : json;
   const lines = text.split('\n');
@@ -49,7 +49,7 @@ function timestampOrDash(ms: number | null): string {
 const LABEL_WIDTH = 14;
 
 /** A single left-column metadata row with a fixed-width label so values align. */
-function MetaRow({ label, value }: { label: string; value: string }) {
+export function MetaRow({ label, value }: { label: string; value: string }) {
   return (
     <Box>
       <Box width={LABEL_WIDTH} flexShrink={0}>
@@ -109,7 +109,7 @@ function StackLineText({ line }: { line: StackLine }) {
  * Width of the left metadata column — wide enough to fit a full timestamp line
  * (e.g. `Processed at: 2026-07-12 23:47:11`) without wrapping.
  */
-const LEFT_COLUMN_WIDTH = 34;
+export const LEFT_COLUMN_WIDTH = 34;
 
 /**
  * Two-column job detail view. The left column holds compact metadata — the

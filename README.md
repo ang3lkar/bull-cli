@@ -179,6 +179,12 @@ A missing file is perfectly fine and just falls back to defaults.
   delayed, waiting, active, failed, completed. Paused queues carry a `(paused)` marker.
 - **Job list** — a full-width `ID`, `Name`, `State`, `Attempts`, `CreatedAt` table. The name
   column expands to fill the terminal. The status header provides counts and selection feedback.
+- **Schedulers** — the sixth tab of the job list: the queue's BullMQ job schedulers (repeatable
+  jobs), soonest next run first, with `Key`, `Name`, `Schedule` (cron pattern or `every 5m`),
+  `TZ`, `Next run` and `Iterations` columns. Read-only.
+- **Scheduler detail** — a scheduler's schedule, timezone, next run, start/end dates, iterations,
+  offset and next job on the left; its job template (data and options) on the right. `Enter`
+  opens the next delayed job, and `Esc` brings you back. It reloads on every refresh.
 - **Job detail** — job metadata on the left (ID, name, state, dates, how long the job waited and
   ran, attempts out of the limit, progress, options); the failure reason, data, return value and
   stack trace on the right, with the first frame from your own code highlighted. It reloads on
@@ -189,7 +195,8 @@ A missing file is perfectly fine and just falls back to defaults.
   view-contextual ones (cyan). It reserves a fixed height, so the breadcrumb and everything
   below it stay on the same row as you navigate.
 - **Breadcrumb** — the current location above the body content, one crumb per level of the
-  navigation stack: `Queues`, `Queues > emailQ`, `Queues > emailQ > failed > job #43`.
+  navigation stack: `Queues`, `Queues > emailQ`, `Queues > emailQ > failed > job #43`,
+  `Queues > emailQ > schedulers > daily-digest`.
 - **Status bar** — a compact Redis URL, with any password masked, and the BullMQ key prefix.
 
 Only one view is visible at a time. `Enter` drills into the selected row; `Escape` or `h` returns to
@@ -231,12 +238,13 @@ zero jobs, and a search that matches nothing names the query instead of the stat
 | Key | Action |
 |---|---|
 | `↑` / `↓` | Navigate jobs |
-| `←` / `→` | Previous / next status tab (clamped at Delayed and Completed) |
+| `←` / `→` | Previous / next tab (clamped at Delayed and Schedulers) |
 | `1` | Delayed jobs |
 | `2` | Waiting jobs |
 | `3` | Active jobs |
 | `4` | Failed jobs |
 | `5` | Completed jobs |
+| `6` | Job schedulers |
 | `b` / `n` | Previous / next page of the job list |
 | `Enter` | Open job detail |
 | `/` | Open search bar (filters by job ID or name) |
@@ -244,6 +252,25 @@ zero jobs, and a search that matches nothing names the query instead of the stat
 | `Shift+D` | Delete job (with confirmation prompt) |
 | `p` | Promote a delayed job to waiting (shown only for Delayed) |
 | `c` | Duplicate job — clones its payload as a new delayed job (with confirmation prompt) |
+
+### Schedulers tab
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` | Navigate schedulers |
+| `←` / `→` / `1`–`6` | Switch tab |
+| `b` / `n` | Previous / next page of schedulers |
+| `Enter` | Open scheduler detail |
+| `Esc` / `h` | Return to the queue list |
+
+The job-only keys (`/`, `R`, `Shift+D`, `p`, `c`) do nothing here.
+
+### Scheduler detail
+
+| Key | Action |
+|---|---|
+| `Enter` | Open the scheduler's next job (when it has one) |
+| `Esc` / `h` | Return to the schedulers list |
 
 ### Job detail
 

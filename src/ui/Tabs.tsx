@@ -1,8 +1,8 @@
 import { Text } from 'ink';
-import type { JobStatus } from '../core/types.js';
+import type { JobStatus, Tab } from '../core/types.js';
 
 export interface TabsProps {
-  active: JobStatus;
+  active: Tab;
   /**
    * Per-tab job counts. Each tab always reserves a fixed-width, 6-character
    * count slot, right-aligned with the closing `)` fixed in place and the
@@ -12,12 +12,15 @@ export interface TabsProps {
    * instead of a count.
    */
   counts?: Record<JobStatus, number> | null;
+  /** Job scheduler count for the Schedulers tab's slot; blank while unknown (`null`/omitted). */
+  schedulerCount?: number | null;
 }
 
-/** Job lifecycle order, matching the `1`-`5` key bindings. */
-const TAB_ORDER: JobStatus[] = ['delayed', 'waiting', 'active', 'failed', 'completed'];
+/** Tab order, matching the `1`-`6` key bindings. */
+const TAB_ORDER: Tab[] = ['delayed', 'waiting', 'active', 'failed', 'completed', 'schedulers'];
 
-const TAB_LABELS: Record<JobStatus, string> = {
+const TAB_LABELS: Record<Tab, string> = {
+  schedulers: 'Schedulers',
   active: 'Active',
   waiting: 'Waiting',
   completed: 'Completed',
@@ -50,7 +53,7 @@ export function formatCount(n: number): string {
 }
 
 /**
- * Status tab row: `Delayed | Waiting | Active | Failed | Completed` with the
+ * Tab row: `Delayed | Waiting | Active | Failed | Completed | Schedulers` with the
  * active tab bracketed/highlighted. For the active tab, the bold+inverse
  * highlight covers the whole cell — both the `[Label]` marker and its count
  * slot (e.g. `[Active](999k)`) — while inactive tabs render unstyled. Each
@@ -59,17 +62,16 @@ export function formatCount(n: number): string {
  * slot (tight parens, e.g. `(15)`/`(~4k)`, padded on the left) regardless of
  * whether counts have loaded yet or how many digits they contain.
  */
-export function Tabs({ active, counts }: TabsProps) {
+export function Tabs({ active, counts, schedulerCount }: TabsProps) {
   return (
     <Text>
       {TAB_ORDER.map((status, index) => {
         const isActive = status === active;
         const label = TAB_LABELS[status];
         const marker = isActive ? `[${label}]` : ` ${label} `;
+        const count = status === 'schedulers' ? schedulerCount : counts?.[status];
         const countSlot =
-          counts != null
-            ? `(${formatCount(counts[status])})`.padStart(COUNT_SLOT_WIDTH)
-            : BLANK_COUNT_SLOT;
+          count != null ? `(${formatCount(count)})`.padStart(COUNT_SLOT_WIDTH) : BLANK_COUNT_SLOT;
         return (
           <Text key={status}>
             <Text bold={isActive} inverse={isActive}>
