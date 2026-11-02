@@ -21,63 +21,121 @@ export interface ConnectionOpts {
   tls?: Record<string, never>;
 }
 
+const isSet = (value: string | undefined): value is string =>
+  value !== undefined && value.trim() !== '';
+
+/** A value of exactly this form is read from the environment variable it names. */
+const ENV_REFERENCE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
+
+/**
+ * Resolves a profile field: a value of the exact form `${NAME}` is replaced
+ * by that environment variable, anything else is used as written (so
+ * `redis://${HOST}` stays literal). An unset or empty variable is a
+ * `ConfigError` naming the profile, field and variable, never a value.
+ */
+function interpolate(
+  value: string,
+  field: keyof ProfileConfig,
+  profile: SelectedProfile,
+  env: NodeJS.ProcessEnv,
+): string {
+  const match = ENV_REFERENCE.exec(value);
+  if (match === null) {
+    return value;
+  }
+  const resolved = env[match[1]];
+  if (!isSet(resolved)) {
+    throw new ConfigError(
+      `profile "${profile.name}": ${field} uses \${${match[1]}}, which is not set`,
+    );
+  }
+  return resolved;
+}
+
 /**
  * Resolves the Redis connection URL using the documented precedence:
- * `--redis` flag > `REDIS_URL` env var > default localhost URL.
+ * `--redis` flag > `REDIS_URL` env var > selected profile > default
+ * localhost URL.
  *
- * Empty or whitespace-only values (flag or env) are treated as absent.
+ * Empty or whitespace-only values (flag or env) are treated as absent. The
+ * profile's `${VAR}` reference is only read when the profile is what wins,
+ * so `--redis` works even when the default profile's variable isn't set.
+ * Throws `ConfigError` for an unset `${VAR}`.
  * Pure function — no I/O, no reliance on process globals (env is injected).
  */
-export function resolveRedisUrl(flag: string | undefined, env: NodeJS.ProcessEnv): string {
-  if (flag !== undefined && flag.trim() !== '') {
+export function resolveRedisUrl(
+  flag: string | undefined,
+  env: NodeJS.ProcessEnv,
+  profile: SelectedProfile | null = null,
+): string {
+  if (isSet(flag)) {
     return flag;
   }
-
-  const envUrl = env.REDIS_URL;
-  if (envUrl !== undefined && envUrl.trim() !== '') {
-    return envUrl;
+  if (isSet(env.REDIS_URL)) {
+    return env.REDIS_URL;
   }
-
+  if (profile !== null) {
+    return interpolate(profile.redisUrl, 'redisUrl', profile, env);
+  }
   return DEFAULT_REDIS_URL;
 }
 
 /**
  * Resolves the BullMQ Redis key prefix using the documented precedence:
- * `--prefix` flag > `BULLMQ_PREFIX` env var > `'bull'` default (bullmq's own
- * default).
+ * `--prefix` flag > `BULLMQ_PREFIX` env var > selected profile's `prefix` >
+ * `'bull'` default (bullmq's own default).
  *
  * Empty or whitespace-only values (flag or env) are treated as absent.
+ * Throws `ConfigError` for an unset `${VAR}`.
  * Pure function — no I/O, no reliance on process globals (env is injected).
  */
-export function resolvePrefix(flag: string | undefined, env: NodeJS.ProcessEnv): string {
-  if (flag !== undefined && flag.trim() !== '') {
+export function resolvePrefix(
+  flag: string | undefined,
+  env: NodeJS.ProcessEnv,
+  profile: SelectedProfile | null = null,
+): string {
+  if (isSet(flag)) {
     return flag;
   }
-
-  const envPrefix = env.BULLMQ_PREFIX;
-  if (envPrefix !== undefined && envPrefix.trim() !== '') {
-    return envPrefix;
+  if (isSet(env.BULLMQ_PREFIX)) {
+    return env.BULLMQ_PREFIX;
   }
-
+  if (profile?.prefix !== undefined) {
+    return interpolate(profile.prefix, 'prefix', profile, env);
+  }
   return DEFAULT_BULLMQ_PREFIX;
 }
 
-export type ConfigSource = 'flag' | 'env' | 'default';
+export type ConfigSource = 'flag' | 'env' | 'profile' | 'default';
 
-/** Which input `resolveRedisUrl` would pick: the flag, `REDIS_URL`, or the default. Pure. */
-export function redisUrlSource(flag: string | undefined, env: NodeJS.ProcessEnv): ConfigSource {
-  if (flag !== undefined && flag.trim() !== '') {
+/** Which input `resolveRedisUrl` would pick: the flag, `REDIS_URL`, the profile, or the default. Pure. */
+export function redisUrlSource(
+  flag: string | undefined,
+  env: NodeJS.ProcessEnv,
+  profile: SelectedProfile | null = null,
+): ConfigSource {
+  if (isSet(flag)) {
     return 'flag';
   }
-  return env.REDIS_URL !== undefined && env.REDIS_URL.trim() !== '' ? 'env' : 'default';
+  if (isSet(env.REDIS_URL)) {
+    return 'env';
+  }
+  return profile !== null ? 'profile' : 'default';
 }
 
-/** Which input `resolvePrefix` would pick: the flag, `BULLMQ_PREFIX`, or the default. Pure. */
-export function prefixSource(flag: string | undefined, env: NodeJS.ProcessEnv): ConfigSource {
-  if (flag !== undefined && flag.trim() !== '') {
+/** Which input `resolvePrefix` would pick: the flag, `BULLMQ_PREFIX`, the profile, or the default. Pure. */
+export function prefixSource(
+  flag: string | undefined,
+  env: NodeJS.ProcessEnv,
+  profile: SelectedProfile | null = null,
+): ConfigSource {
+  if (isSet(flag)) {
     return 'flag';
   }
-  return env.BULLMQ_PREFIX !== undefined && env.BULLMQ_PREFIX.trim() !== '' ? 'env' : 'default';
+  if (isSet(env.BULLMQ_PREFIX)) {
+    return 'env';
+  }
+  return profile?.prefix !== undefined ? 'profile' : 'default';
 }
 
 /**
@@ -125,6 +183,24 @@ export interface UserConfig {
    * than the default without Redis being unreachable at all.
    */
   refreshTimeoutMs?: number;
+  /** Profile used when `--profile` isn't given. */
+  defaultProfile?: string;
+  /** Named connections, selected with `--profile <name>` or `defaultProfile`. */
+  profiles?: Record<string, ProfileConfig>;
+}
+
+/**
+ * One named connection. Either value may be written as `${VAR}` to read it
+ * from the environment when the profile is used, keeping secrets out of the file.
+ */
+export interface ProfileConfig {
+  redisUrl: string;
+  prefix?: string;
+}
+
+/** The profile in effect, with its name for error messages and `doctor`'s source label. */
+export interface SelectedProfile extends ProfileConfig {
+  name: string;
 }
 
 /**
@@ -140,7 +216,14 @@ const CONFIG_KEY_SPECS = {
 
 type ConfigKey = keyof typeof CONFIG_KEY_SPECS;
 
-const KNOWN_CONFIG_KEYS = Object.keys(CONFIG_KEY_SPECS) as readonly ConfigKey[];
+const PROFILE_CONFIG_KEYS = ['defaultProfile', 'profiles'] as const;
+
+const KNOWN_CONFIG_KEYS: readonly string[] = [
+  ...Object.keys(CONFIG_KEY_SPECS),
+  ...PROFILE_CONFIG_KEYS,
+];
+
+const KNOWN_PROFILE_KEYS: readonly string[] = ['redisUrl', 'prefix'];
 
 /**
  * Thrown for any problem with a config file the user can actually fix
@@ -169,15 +252,61 @@ function levenshtein(a: string, b: string): number {
 }
 
 /** Closest known key to an unrecognized one, for a "did you mean" hint — undefined if nothing is close enough to be useful. */
-function suggestConfigKey(key: string): string | undefined {
+function suggestKey(key: string, knownKeys: readonly string[]): string | undefined {
   let best: { key: string; distance: number } | undefined;
-  for (const known of KNOWN_CONFIG_KEYS) {
+  for (const known of knownKeys) {
     const distance = levenshtein(key.toLowerCase(), known.toLowerCase());
     if (best === undefined || distance < best.distance) {
       best = { key: known, distance };
     }
   }
   return best !== undefined && best.distance <= 3 ? best.key : undefined;
+}
+
+function didYouMean(key: string, knownKeys: readonly string[]): string {
+  const suggestion = suggestKey(key, knownKeys);
+  return suggestion ? ` — did you mean "${suggestion}"?` : '';
+}
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+function parseProfiles(value: unknown, filePath: string): Record<string, ProfileConfig> {
+  if (!isPlainObject(value)) {
+    throw new ConfigError(
+      `${filePath}: "profiles" must be an object of named profiles, got: ${JSON.stringify(value)}`,
+    );
+  }
+  const profiles: Record<string, ProfileConfig> = {};
+  for (const [name, profile] of Object.entries(value)) {
+    const where = `${filePath}: profile "${name}"`;
+    if (name.trim() === '') {
+      throw new ConfigError(`${filePath}: a profile name must not be empty`);
+    }
+    if (!isPlainObject(profile)) {
+      throw new ConfigError(`${where} must be an object, got: ${JSON.stringify(profile)}`);
+    }
+    for (const field of Object.keys(profile)) {
+      if (!KNOWN_PROFILE_KEYS.includes(field)) {
+        throw new ConfigError(
+          `${where}: unknown key "${field}"${didYouMean(field, KNOWN_PROFILE_KEYS)}`,
+        );
+      }
+    }
+    const { redisUrl, prefix } = profile;
+    if (typeof redisUrl !== 'string' || redisUrl.trim() === '') {
+      throw new ConfigError(
+        `${where}: "redisUrl" is required and must be a non-empty string, got: ${JSON.stringify(redisUrl)}`,
+      );
+    }
+    if (prefix !== undefined && (typeof prefix !== 'string' || prefix.trim() === '')) {
+      throw new ConfigError(
+        `${where}: "prefix" must be a non-empty string, got: ${JSON.stringify(prefix)}`,
+      );
+    }
+    profiles[name] = prefix === undefined ? { redisUrl } : { redisUrl, prefix };
+  }
+  return profiles;
 }
 
 /**
@@ -203,11 +332,23 @@ export function parseConfigFile(source: string, filePath: string): UserConfig {
 
   const result: UserConfig = {};
   for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-    if (!(KNOWN_CONFIG_KEYS as readonly string[]).includes(key)) {
-      const suggestion = suggestConfigKey(key);
+    if (!KNOWN_CONFIG_KEYS.includes(key)) {
       throw new ConfigError(
-        `${filePath}: unknown config key "${key}"${suggestion ? ` — did you mean "${suggestion}"?` : ''}`,
+        `${filePath}: unknown config key "${key}"${didYouMean(key, KNOWN_CONFIG_KEYS)}`,
       );
+    }
+    if (key === 'defaultProfile') {
+      if (typeof value !== 'string' || value.trim() === '') {
+        throw new ConfigError(
+          `${filePath}: "defaultProfile" must be a non-empty string, got: ${JSON.stringify(value)}`,
+        );
+      }
+      result.defaultProfile = value;
+      continue;
+    }
+    if (key === 'profiles') {
+      result.profiles = parseProfiles(value, filePath);
+      continue;
     }
     const configKey = key as ConfigKey;
     const { min } = CONFIG_KEY_SPECS[configKey];
@@ -268,4 +409,39 @@ export function resolveRefreshTimeoutMs(
   return (
     projectConfig?.refreshTimeoutMs ?? userConfig?.refreshTimeoutMs ?? DEFAULT_REFRESH_TIMEOUT_MS
   );
+}
+
+/**
+ * Picks the profile in effect: `--profile` if given, else `defaultProfile`,
+ * else none. The two config files are merged first: the project file's
+ * `defaultProfile` wins, and a project profile replaces a user profile of
+ * the same name as a whole (fields aren't merged), so a project file's
+ * `defaultProfile` may name a profile defined only in the user file.
+ *
+ * An unknown name is a `ConfigError` listing the available profiles, even
+ * when `--redis` would make the profile's URL irrelevant: a mistyped profile
+ * is still a mistake. `${VAR}` references aren't read here; see `resolveRedisUrl`.
+ */
+export function selectProfile(
+  flag: string | undefined,
+  userConfig: UserConfig | null,
+  projectConfig: UserConfig | null,
+): SelectedProfile | null {
+  const profiles = { ...userConfig?.profiles, ...projectConfig?.profiles };
+  const fromFlag = isSet(flag);
+  const name = fromFlag ? flag : (projectConfig?.defaultProfile ?? userConfig?.defaultProfile);
+  if (name === undefined) {
+    return null;
+  }
+  const profile = Object.hasOwn(profiles, name) ? profiles[name] : undefined;
+  if (profile === undefined) {
+    const names = Object.keys(profiles).sort();
+    const origin = fromFlag ? '' : ' (set by "defaultProfile")';
+    const available =
+      names.length === 0
+        ? 'no profiles are defined in the config files'
+        : `available profiles: ${names.join(', ')}${didYouMean(name, names).replace(' — ', '; ')}`;
+    throw new ConfigError(`Unknown profile "${name}"${origin}: ${available}`);
+  }
+  return { name, ...profile };
 }

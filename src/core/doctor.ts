@@ -8,6 +8,9 @@ import {
   redisUrlSource,
   resolvePrefix,
   resolveRedisUrl,
+  type SelectedProfile,
+  selectProfile,
+  type UserConfig,
 } from '../config.js';
 import { discoverQueues } from './discovery.js';
 import { maskRedisUrl, withRedisDb } from './format.js';
@@ -31,6 +34,8 @@ export interface DoctorReport {
 export interface DoctorDeps {
   redisFlag: string | undefined;
   prefixFlag: string | undefined;
+  /** `--profile`; absent falls back to the config files' `defaultProfile`. */
+  profileFlag?: string | undefined;
   env: NodeJS.ProcessEnv;
   /** Paths of the user-level and project-level config files. */
   configPaths: { user: string; project: string };
@@ -60,7 +65,15 @@ const SYMBOLS: Record<CheckStatus, string> = { ok: '✓', warn: '!', fail: '✗'
 const SOURCE_LABELS = {
   redis: { flag: '--redis', env: 'REDIS_URL', default: 'default' },
   prefix: { flag: '--prefix', env: 'BULLMQ_PREFIX', default: 'default' },
-} satisfies Record<string, Record<ConfigSource, string>>;
+} satisfies Record<string, Record<Exclude<ConfigSource, 'profile'>, string>>;
+
+function sourceLabel(
+  field: keyof typeof SOURCE_LABELS,
+  source: ConfigSource,
+  profile: SelectedProfile | null,
+): string {
+  return source === 'profile' ? `profile "${profile?.name}"` : SOURCE_LABELS[field][source];
+}
 
 /** Masks credentials in free text: any `redis[s]://user:pass@` fragment, plus the literal password of `url`. */
 function maskText(text: string, url: string): string {
@@ -121,27 +134,82 @@ function pingFailureHint(message: string): string {
   return 'Is Redis running and reachable at this URL?';
 }
 
-function checkConfig(deps: DoctorDeps): Check {
+interface ConfigCheck {
+  check: Check;
+  /** Parsed files, `null` when absent; both `null` when any file failed validation. */
+  user: UserConfig | null;
+  project: UserConfig | null;
+}
+
+function checkConfig(deps: DoctorDeps): ConfigCheck {
   const present: string[] = [];
   const failures: string[] = [];
+  const parsed: Array<UserConfig | null> = [];
   for (const path of [deps.configPaths.user, deps.configPaths.project]) {
     try {
       if (!deps.fileExists(path)) {
+        parsed.push(null);
         continue;
       }
-      parseConfigFile(deps.readFile(path), path);
+      parsed.push(parseConfigFile(deps.readFile(path), path));
       present.push(path);
     } catch (error) {
+      parsed.push(null);
       failures.push(error instanceof ConfigError ? error.message : `${path}: ${String(error)}`);
     }
   }
   if (failures.length > 0) {
-    return { id: 'config', status: 'fail', message: failures.join('; ') };
+    return {
+      check: { id: 'config', status: 'fail', message: failures.join('; ') },
+      user: null,
+      project: null,
+    };
   }
+  const [user, project] = parsed;
   if (present.length === 0) {
-    return { id: 'config', status: 'ok', message: 'No config files (using defaults)' };
+    return {
+      check: { id: 'config', status: 'ok', message: 'No config files (using defaults)' },
+      user,
+      project,
+    };
   }
-  return { id: 'config', status: 'ok', message: `Valid config: ${present.join(', ')}` };
+  return {
+    check: { id: 'config', status: 'ok', message: `Valid config: ${present.join(', ')}` },
+    user,
+    project,
+  };
+}
+
+type ConnectionTarget =
+  | { ok: true; url: string; prefix: string; profile: SelectedProfile | null }
+  | { ok: false; message: string };
+
+/**
+ * Picks the profile and resolves the URL and prefix the dashboard would use.
+ * With a broken config file, `--profile` can't be honoured, so that fails;
+ * without it, doctor carries on with the flag, env or default.
+ */
+function resolveTarget(deps: DoctorDeps, config: ConfigCheck): ConnectionTarget {
+  const configValid = config.check.status !== 'fail';
+  if (!configValid && deps.profileFlag !== undefined && deps.profileFlag.trim() !== '') {
+    return {
+      ok: false,
+      message: `Can't select profile "${deps.profileFlag}": a config file is invalid (see the config check)`,
+    };
+  }
+  try {
+    const profile = configValid
+      ? selectProfile(deps.profileFlag, config.user, config.project)
+      : null;
+    return {
+      ok: true,
+      url: resolveRedisUrl(deps.redisFlag, deps.env, profile),
+      prefix: resolvePrefix(deps.prefixFlag, deps.env, profile),
+      profile,
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 function parseInfoFields(info: string): Map<string, string> {
@@ -281,10 +349,29 @@ async function buildNoQueuesHint(
  */
 export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
   const checks: Check[] = [];
-  checks.push(checkConfig(deps));
+  const config = checkConfig(deps);
+  checks.push(config.check);
 
-  const url = resolveRedisUrl(deps.redisFlag, deps.env);
-  const prefix = resolvePrefix(deps.prefixFlag, deps.env);
+  const skip = (id: string, reason: string): Check => ({
+    id,
+    status: 'skip',
+    message: `Skipped (${reason})`,
+  });
+
+  const target = resolveTarget(deps, config);
+  if (!target.ok) {
+    checks.push({
+      id: 'connection',
+      status: 'fail',
+      message: target.message,
+      hint: 'Check --profile and the profiles in your config file.',
+    });
+    checks.push(skip('ping', 'no connection target'));
+    checks.push(skip('server', 'no connection target'));
+    checks.push(skip('queues', 'no connection target'));
+    return finish(deps.version, checks);
+  }
+  const { url, prefix, profile } = target;
   const maskedUrl = maskRedisUrl(url);
   let db = 0;
   let urlValid = true;
@@ -304,8 +391,16 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     });
   }
   if (urlValid) {
-    const urlSource = SOURCE_LABELS.redis[redisUrlSource(deps.redisFlag, deps.env)];
-    const prefixSrc = SOURCE_LABELS.prefix[prefixSource(deps.prefixFlag, deps.env)];
+    const urlSource = sourceLabel(
+      'redis',
+      redisUrlSource(deps.redisFlag, deps.env, profile),
+      profile,
+    );
+    const prefixSrc = sourceLabel(
+      'prefix',
+      prefixSource(deps.prefixFlag, deps.env, profile),
+      profile,
+    );
     const check: Check = {
       id: 'connection',
       status: 'ok',
@@ -319,12 +414,6 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     }
     checks.push(check);
   }
-
-  const skip = (id: string, reason: string): Check => ({
-    id,
-    status: 'skip',
-    message: `Skipped (${reason})`,
-  });
 
   if (!urlValid) {
     checks.push(skip('ping', 'invalid Redis URL'));

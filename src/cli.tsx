@@ -12,6 +12,7 @@ import {
   resolveRedisUrl,
   resolveRefreshIntervalMs,
   resolveRefreshTimeoutMs,
+  selectProfile,
   type UserConfig,
   userConfigPath,
 } from './config.js';
@@ -43,6 +44,27 @@ function loadConfigFile(filePath: string): UserConfig | null {
   }
 }
 
+/**
+ * Picks the connection profile and resolves the URL and prefix (flag > env >
+ * profile > default). An unknown profile or an unset `${VAR}` exits with the
+ * error on stderr, before the alt screen, like a broken config file.
+ */
+function resolveConnection(
+  userConfig: UserConfig | null,
+  projectConfig: UserConfig | null,
+): { redisUrl: string; prefix: string } {
+  try {
+    const profile = selectProfile(cli.flags.profile, userConfig, projectConfig);
+    return {
+      redisUrl: resolveRedisUrl(cli.flags.redis, process.env, profile),
+      prefix: resolvePrefix(cli.flags.prefix, process.env, profile),
+    };
+  } catch (err) {
+    console.error(err instanceof ConfigError ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
 const cli = meow(
   `
 	Usage
@@ -55,6 +77,7 @@ const cli = meow(
 	Options
 	  --redis <url>      Redis connection URL (overrides REDIS_URL env var)
 	  --prefix <prefix>  BullMQ key prefix (overrides BULLMQ_PREFIX env var, default "bull")
+	  --profile <name>   Connection profile from the config file (default: "defaultProfile")
 	  --output <format>  Output mode (supported: json)
 	  --queue <name>     Queue filter for --output=json
 	  -h, --help         Show help
@@ -63,6 +86,7 @@ const cli = meow(
 	Examples
 	  $ bull-cli --redis redis://localhost:6379
 	  $ bull-cli --prefix myapp
+	  $ bull-cli --profile staging
 	  $ bull-cli --output json
 	  $ bull-cli --output json --queue email
 	  $ bull-cli doctor
@@ -75,6 +99,9 @@ const cli = meow(
         type: 'string',
       },
       prefix: {
+        type: 'string',
+      },
+      profile: {
         type: 'string',
       },
       output: {
@@ -139,6 +166,7 @@ async function runDoctorCommand(): Promise<never> {
   const report = await runDoctor({
     redisFlag: cli.flags.redis,
     prefixFlag: cli.flags.prefix,
+    profileFlag: cli.flags.profile,
     env: process.env,
     configPaths: {
       user: userConfigPath(process.env, homedir()),
@@ -169,11 +197,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const redisUrl = resolveRedisUrl(cli.flags.redis, process.env);
-  const prefix = resolvePrefix(cli.flags.prefix, process.env);
-
   const userConfig = loadConfigFile(userConfigPath(process.env, homedir()));
   const projectConfig = loadConfigFile(projectConfigPath(process.cwd()));
+  const { redisUrl, prefix } = resolveConnection(userConfig, projectConfig);
   const refreshIntervalMs = resolveRefreshIntervalMs(userConfig, projectConfig);
   const refreshTimeoutMs = resolveRefreshTimeoutMs(userConfig, projectConfig);
 

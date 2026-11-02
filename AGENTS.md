@@ -120,9 +120,11 @@ disconnects ioredis) before `process.exit()`.
 ### Connection precedence and config resolution
 
 `src/config.ts` resolves the Redis URL and BullMQ key prefix with the same precedence pattern:
-CLI flag > env var (`REDIS_URL` / `BULLMQ_PREFIX`) > default. These resolvers are pure functions
-(env injected, not read from `process.env` directly) so they're unit-testable without process
-mutation. `connectionFromUrl` parses the resolved URL into the discrete options ioredis/bullmq
+CLI flag > env var (`REDIS_URL` / `BULLMQ_PREFIX`) > selected connection profile > default. These
+resolvers are pure functions (env injected, not read from `process.env` directly) so they're
+unit-testable without process mutation. `selectProfile` picks the profile (`--profile` >
+`defaultProfile`, project file merged over user file per profile name); a profile's `${VAR}` value
+is only read from env inside the resolver, when the profile is the value that wins. `connectionFromUrl` parses the resolved URL into the discrete options ioredis/bullmq
 expect, independently of what `redis.ts` hands ioredis directly as a URL string — kept at parity
 deliberately (see the comment in `config.ts`) so TLS (`rediss:`) and IPv6-bracket-stripping behave
 identically in both places.
