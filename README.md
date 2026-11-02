@@ -191,7 +191,12 @@ A missing file is perfectly fine and just falls back to defaults.
 
 - **Queue list** — a full-width list with the queue name and lifecycle counters in order:
   delayed, waiting, active, failed, completed. Paused queues carry a `(paused)` marker. The
-  heading shows the current sort, and `/` filters the list by name.
+  heading shows the current sort, and `/` filters the list by name. A metrics row above the list
+  totals each counter across all queues (the name filter doesn't change it) and shows throughput:
+  completed and failed jobs per minute, averaged over the last minute of refreshes. Throughput
+  reads `—` until the second refresh. It is worked out from how the counts grow, so a queue whose
+  jobs use `removeOnComplete` / `removeOnFail` adds nothing to it, and a `clean` counts as zero
+  rather than a negative rate.
 - **Job list** — a full-width `ID`, `Name`, `State`, `Attempts`, `CreatedAt` table. The name
   column expands to fill the terminal. The status header provides counts and selection feedback.
 - **Schedulers** — the sixth tab of the job list: the queue's BullMQ job schedulers (repeatable

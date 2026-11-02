@@ -1,5 +1,6 @@
 import { filterJobs } from './filter.js';
 import { filterQueues, QUEUE_SORT_ORDER, type QueueSort, sortQueues } from './queueList.js';
+import { type QueueTotals, sumCounts, type Throughput, ThroughputTracker } from './throughput.js';
 import type {
   ActionResult,
   ConnectionStatus,
@@ -40,7 +41,7 @@ export type NavigationView =
 
 export type QueueCounts = Record<JobStatus, number>;
 
-export type { QueueSort };
+export type { QueueSort, QueueTotals, Throughput };
 
 /**
  * Everything the store needs from the outside world, expressed purely in
@@ -110,6 +111,14 @@ export interface DashboardSnapshot {
   queueFilter: { active: boolean; query: string };
   /** Last-known counts keyed by queue name, for the top-level queue table. */
   queueCounts: Readonly<Record<string, QueueCounts>>;
+  /** `queueCounts` summed over every discovered queue, ignoring the name filter. */
+  queueTotals: QueueTotals;
+  /**
+   * Completed and failed jobs per minute across all queues, from how the
+   * counts grew between refreshes (see `ThroughputTracker`). `null` until two
+   * refreshes have landed.
+   */
+  throughput: Throughput | null;
   navigationStack: readonly NavigationView[];
   currentView: NavigationView;
   selectedQueueName: string | null;
@@ -234,6 +243,7 @@ export class DashboardStore {
   private connection: ConnectionStatus = { state: 'connecting' };
   private queues: QueueInfo[] = [];
   private readonly queueCountsByName = new Map<string, QueueCounts>();
+  private readonly throughput = new ThroughputTracker();
   private navigationStack: NavigationView[] = [{ kind: 'queues' }];
   private selectedQueueName: string | null = null;
   private tab: Tab = 'active';
@@ -330,6 +340,11 @@ export class DashboardStore {
       queueSort: this.queueSort,
       queueFilter: { active: this.queueFilterActive, query: this.queueFilterQuery },
       queueCounts,
+      queueTotals: sumCounts(
+        this.queues.map((q) => q.name),
+        this.queueCountsByName,
+      ),
+      throughput: this.throughput.rate(),
       navigationStack: this.navigationStack,
       currentView: this.navigationStack[this.navigationStack.length - 1],
       selectedQueueName: this.selectedQueueName,
@@ -659,6 +674,7 @@ export class DashboardStore {
 
     this.connection = { state: 'ready' };
     this.lastUpdatedAt = this.now();
+    this.throughput.record(this.lastUpdatedAt, names, this.queueCountsByName);
     // Deliberately here rather than in each branch above: every non-
     // superseded outcome — a landed page, no queue to load, or a failed
     // fetch — reaches this line, and a superseded cycle returns before it

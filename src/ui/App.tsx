@@ -13,6 +13,7 @@ import { useTerminalDimensions } from './hooks/useTerminalDimensions.js';
 import { JobDetailView } from './JobDetailView.js';
 import { JobTable } from './JobTable.js';
 import { Loading } from './Loading.js';
+import { QueueMetrics } from './QueueMetrics.js';
 import { QueueTable } from './QueueTable.js';
 import { SchedulerDetailView } from './SchedulerDetailView.js';
 import { SchedulerTable } from './SchedulerTable.js';
@@ -132,6 +133,13 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
         ) : snapshot.currentView.kind === 'queues' ? (
           <>
             <Breadcrumb view={snapshot.currentView} sort={snapshot.queueSort} />
+            <Box marginTop={1} flexShrink={0}>
+              <QueueMetrics
+                totals={snapshot.queueTotals}
+                throughput={snapshot.throughput}
+                width={contentWidth}
+              />
+            </Box>
             {(snapshot.queueFilter.active || snapshot.queueFilter.query !== '') && (
               <Box marginTop={1}>
                 <SearchBar
