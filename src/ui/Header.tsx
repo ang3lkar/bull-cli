@@ -70,6 +70,7 @@ function shortcutsFor(view: NavigationView | undefined, status: Tab | undefined)
       { key: 'Enter', label: 'Detail' },
       { key: '/', label: 'Filter' },
       ...jobActionShortcuts(status),
+      ...(status === 'failed' ? [{ key: 'A', label: 'Retry all' }] : []),
       { key: 'c', label: 'Duplicate' },
     ];
   }

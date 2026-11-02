@@ -1,5 +1,5 @@
 import type { Queue } from 'bullmq';
-import type { ActionResult } from './types.js';
+import type { ActionResult, RetryError, RetrySummary } from './types.js';
 
 /**
  * Converts a caught error into a plain human-readable message — never a
@@ -41,6 +41,138 @@ export async function retryJob(queue: Queue, jobId: string): Promise<ActionResul
     return { ok: true, info: `Job ${jobId} moved back to waiting` };
   } catch (err) {
     return { ok: false, message: toMessage(err) };
+  }
+}
+
+/** Which failed jobs `retryFailedJobs` acts on. At most one filter applies. */
+export interface RetryFailedOptions {
+  /** Only this job (must currently be failed). */
+  jobId?: string;
+  /** Only jobs that failed at or after this epoch-millis time. */
+  failedSince?: number;
+  /** Count what would be retried without changing anything. */
+  dryRun?: boolean;
+}
+
+/**
+ * Retries failed jobs in bulk: all of them by default, one with `jobId`, or
+ * the ones that failed since `failedSince`.
+ *
+ * - **All**: bullmq's `Queue.retryJobs()`, one Lua loop server-side. It
+ *   returns nothing, so `matched` is the failed count read just before, and
+ *   `retried` assumes all of them moved unless the call throws (then the
+ *   failed count is re-read to work out how many did).
+ * - **`failedSince`**: `retryJobs({ timestamp })` is an UPPER bound (it
+ *   retries jobs that failed *before* it), the opposite of what's needed. The
+ *   failed list is ordered by `finishedOn`, so the matching ids are
+ *   collected newest-first (see `failedIdsSince`), then retried one by one.
+ *   Collecting before retrying matters: each retry removes a job from the
+ *   list being paged through, which would shift the pages and skip jobs.
+ * - **`jobId`**: like `retryJob` above, but reported as a summary.
+ */
+export async function retryFailedJobs(
+  queue: Queue,
+  opts: RetryFailedOptions = {},
+): Promise<RetrySummary> {
+  const { jobId, failedSince, dryRun = false } = opts;
+  try {
+    if (jobId !== undefined) {
+      return await retryOne(queue, jobId, dryRun);
+    }
+    if (failedSince !== undefined) {
+      const ids = await failedIdsSince(queue, failedSince);
+      return dryRun ? summary(ids.length) : await retryEach(queue, ids);
+    }
+    return await retryAll(queue, dryRun);
+  } catch (err) {
+    return summary(0, 0, [{ jobId: null, message: toMessage(err) }], 0);
+  }
+}
+
+const FAILED_PAGE_SIZE = 200;
+
+/**
+ * Ids of failed jobs whose `finishedOn` is at or after `since`. bullmq
+ * returns failed jobs newest-first, so paging stops at the first older job.
+ */
+async function failedIdsSince(queue: Queue, since: number): Promise<string[]> {
+  // A Set, because new failures landing mid-scan go in at the top and push
+  // older jobs down a page, so the same job can turn up on two pages.
+  const ids = new Set<string>();
+  for (let start = 0; ; start += FAILED_PAGE_SIZE) {
+    const jobs = await queue.getFailed(start, start + FAILED_PAGE_SIZE - 1);
+    for (const job of jobs) {
+      // A job removed between the range read and the hash read comes back
+      // empty; it can't be retried, so skip it.
+      if (!job?.id) {
+        continue;
+      }
+      if ((job.finishedOn ?? 0) < since) {
+        return [...ids];
+      }
+      ids.add(job.id);
+    }
+    if (jobs.length < FAILED_PAGE_SIZE) {
+      return [...ids];
+    }
+  }
+}
+
+/** `errored` defaults to one per error; the batch path overrides it (one error, many jobs). */
+function summary(
+  matched: number,
+  retried = 0,
+  errors: RetryError[] = [],
+  errored = errors.length,
+): RetrySummary {
+  return { matched, retried, errored, errors };
+}
+
+/** A job that is missing or not failed matches nothing, and is reported as an error. */
+async function retryOne(queue: Queue, jobId: string, dryRun: boolean): Promise<RetrySummary> {
+  const job = await queue.getJob(jobId);
+  const state = job ? await job.getState() : null;
+  if (!job || state !== 'failed') {
+    const message =
+      state === null
+        ? `Job ${jobId} not found`
+        : `Job ${jobId} is ${state}, not failed — only failed jobs can be retried`;
+    return summary(0, 0, [{ jobId, message }], 0);
+  }
+  if (dryRun) {
+    return summary(1);
+  }
+  try {
+    await job.retry('failed');
+    return summary(1, 1);
+  } catch (err) {
+    return summary(1, 0, [{ jobId, message: toMessage(err) }]);
+  }
+}
+
+async function retryEach(queue: Queue, ids: string[]): Promise<RetrySummary> {
+  const errors: RetryError[] = [];
+  for (const id of ids) {
+    const result = await retryJob(queue, id);
+    if (!result.ok) {
+      errors.push({ jobId: id, message: result.message });
+    }
+  }
+  return summary(ids.length, ids.length - errors.length, errors);
+}
+
+async function retryAll(queue: Queue, dryRun: boolean): Promise<RetrySummary> {
+  const before = await queue.getFailedCount();
+  if (dryRun || before === 0) {
+    return summary(before, dryRun ? 0 : before);
+  }
+  try {
+    await queue.retryJobs({ state: 'failed', timestamp: Date.now() });
+    return summary(before, before);
+  } catch (err) {
+    const after = await queue.getFailedCount().catch(() => before);
+    const retried = Math.max(0, before - after);
+    return summary(before, retried, [{ jobId: null, message: toMessage(err) }], before - retried);
   }
 }
 

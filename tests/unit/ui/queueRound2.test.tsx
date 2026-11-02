@@ -65,6 +65,7 @@ async function mount() {
       duplicate: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       togglePause: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       drain: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
+      retryAll: vi.fn(async () => ({ matched: 0, retried: 0, errored: 0, errors: [] })),
     },
     syncRegistry: vi.fn(async () => {}),
   };

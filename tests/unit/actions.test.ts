@@ -7,6 +7,7 @@ import {
   pauseQueue,
   promoteJob,
   resumeQueue,
+  retryFailedJobs,
   retryJob,
   togglePauseQueue,
 } from '../../src/core/actions.js';
@@ -225,5 +226,204 @@ describe('drainQueue error mapping', () => {
     const result = await drainQueue(queue);
 
     expect(result).toEqual({ ok: false, message: 'Could not drain queue: drain boom' });
+  });
+});
+
+describe('retryFailedJobs (fake queue)', () => {
+  function failedJob(id: string, finishedOn: number, overrides: Partial<Job> = {}): Job {
+    return fakeJob({ id, finishedOn, ...overrides } as Partial<Job>);
+  }
+
+  it('all: counts, calls retryJobs for the failed state, and reports every job retried', async () => {
+    const calls: unknown[] = [];
+    const queue = fakeQueue({
+      getFailedCount: async () => 5,
+      retryJobs: async (opts: unknown) => {
+        calls.push(opts);
+      },
+    } as Partial<Queue>);
+    const result = await retryFailedJobs(queue);
+    expect(result).toEqual({ matched: 5, retried: 5, errored: 0, errors: [] });
+    expect(calls).toEqual([expect.objectContaining({ state: 'failed' })]);
+  });
+
+  it('all: a dry run, or no failed jobs, never calls retryJobs', async () => {
+    let called = false;
+    const retryJobs = async () => {
+      called = true;
+    };
+    const dry = await retryFailedJobs(
+      fakeQueue({ getFailedCount: async () => 2, retryJobs } as Partial<Queue>),
+      { dryRun: true },
+    );
+    expect(dry).toEqual({ matched: 2, retried: 0, errored: 0, errors: [] });
+    const none = await retryFailedJobs(
+      fakeQueue({ getFailedCount: async () => 0, retryJobs } as Partial<Queue>),
+    );
+    expect(none).toEqual({ matched: 0, retried: 0, errored: 0, errors: [] });
+    expect(called).toBe(false);
+  });
+
+  it('all: a retryJobs throw re-reads the count to split retried from errored', async () => {
+    const counts = [5, 2];
+    const queue = fakeQueue({
+      getFailedCount: async () => counts.shift() ?? 0,
+      retryJobs: async () => {
+        throw new Error('script boom');
+      },
+    } as Partial<Queue>);
+    expect(await retryFailedJobs(queue)).toEqual({
+      matched: 5,
+      retried: 3,
+      errored: 2,
+      errors: [{ jobId: null, message: 'script boom' }],
+    });
+  });
+
+  it('all: falls back to "none retried" when the re-read fails too', async () => {
+    let first = true;
+    const queue = fakeQueue({
+      getFailedCount: async () => {
+        if (first) {
+          first = false;
+          return 4;
+        }
+        throw new Error('gone');
+      },
+      retryJobs: async () => {
+        throw new Error('script boom');
+      },
+    } as Partial<Queue>);
+    const result = await retryFailedJobs(queue);
+    expect(result).toMatchObject({ matched: 4, retried: 0, errored: 4 });
+  });
+
+  it('failedSince: pages newest-first, stops at the first older job, and skips removed jobs', async () => {
+    const pages: Array<Array<Job | undefined>> = [
+      [
+        failedJob('new-1', 300),
+        undefined as unknown as Job,
+        failedJob('new-2', 200),
+        failedJob('old-1', 50),
+      ],
+    ];
+    const retried: string[] = [];
+    const queue = fakeQueue({
+      getFailed: async () => pages.shift() ?? [],
+      getJob: async (id: string) =>
+        failedJob(id, 0, {
+          retry: async () => {
+            retried.push(id);
+          },
+        }),
+    } as Partial<Queue>);
+    const result = await retryFailedJobs(queue, { failedSince: 100 });
+    expect(result).toEqual({ matched: 2, retried: 2, errored: 0, errors: [] });
+    expect(retried).toEqual(['new-1', 'new-2']);
+  });
+
+  it('failedSince: reads further pages while every job on a page is recent', async () => {
+    const full = Array.from({ length: 200 }, (_, i) => failedJob(`p1-${i}`, 1000));
+    const pages = [full, [failedJob('p2-0', 1000)]];
+    const queue = fakeQueue({ getFailed: async () => pages.shift() ?? [] } as Partial<Queue>);
+    const result = await retryFailedJobs(queue, { failedSince: 0, dryRun: true });
+    expect(result).toEqual({ matched: 201, retried: 0, errored: 0, errors: [] });
+  });
+
+  it('failedSince: counts a job once when new failures shift it onto the next page', async () => {
+    const full = Array.from({ length: 200 }, (_, i) => failedJob(`j${i}`, 1000));
+    // A new failure arrived between the two reads: j199 moved down to page 2.
+    const pages = [full, [failedJob('j199', 1000), failedJob('old', 1)]];
+    const queue = fakeQueue({ getFailed: async () => pages.shift() ?? [] } as Partial<Queue>);
+    const result = await retryFailedJobs(queue, { failedSince: 100, dryRun: true });
+    expect(result.matched).toBe(200);
+  });
+
+  it('failedSince: a per-job failure is counted and reported, the rest still run', async () => {
+    const queue = fakeQueue({
+      getFailed: async () => [failedJob('a', 10), failedJob('b', 10)],
+      getJob: async (id: string) => (id === 'a' ? undefined : failedJob(id, 10)),
+    } as Partial<Queue>);
+    expect(await retryFailedJobs(queue, { failedSince: 0 })).toEqual({
+      matched: 2,
+      retried: 1,
+      errored: 1,
+      errors: [{ jobId: 'a', message: 'Job a not found' }],
+    });
+  });
+
+  it('jobId: retries a failed job, previews it on a dry run', async () => {
+    let retries = 0;
+    const queue = fakeQueue({
+      getJob: async () =>
+        fakeJob({
+          retry: async () => {
+            retries++;
+          },
+        }),
+    });
+    expect(await retryFailedJobs(queue, { jobId: 'job-1', dryRun: true })).toEqual({
+      matched: 1,
+      retried: 0,
+      errored: 0,
+      errors: [],
+    });
+    expect(retries).toBe(0);
+    expect(await retryFailedJobs(queue, { jobId: 'job-1' })).toEqual({
+      matched: 1,
+      retried: 1,
+      errored: 0,
+      errors: [],
+    });
+    expect(retries).toBe(1);
+  });
+
+  it('jobId: a missing or non-failed job matches nothing and is an error', async () => {
+    const missing = await retryFailedJobs(fakeQueue({ getJob: async () => undefined }), {
+      jobId: 'x',
+    });
+    expect(missing).toEqual({
+      matched: 0,
+      retried: 0,
+      errored: 0,
+      errors: [{ jobId: 'x', message: 'Job x not found' }],
+    });
+    const active = await retryFailedJobs(
+      fakeQueue({ getJob: async () => fakeJob({ getState: async () => 'active' }) }),
+      { jobId: 'job-1', dryRun: true },
+    );
+    expect(active.errors[0].message).toContain('is active, not failed');
+    expect(active.matched).toBe(0);
+  });
+
+  it('jobId: a job.retry() throw is reported against the job', async () => {
+    const queue = fakeQueue({
+      getJob: async () =>
+        fakeJob({
+          retry: async () => {
+            throw new Error('locked');
+          },
+        }),
+    });
+    expect(await retryFailedJobs(queue, { jobId: 'job-1' })).toEqual({
+      matched: 1,
+      retried: 0,
+      errored: 1,
+      errors: [{ jobId: 'job-1', message: 'locked' }],
+    });
+  });
+
+  it('never throws: an unexpected error becomes a batch-level error', async () => {
+    const queue = fakeQueue({
+      getFailedCount: async () => {
+        throw 'string boom';
+      },
+    } as Partial<Queue>);
+    expect(await retryFailedJobs(queue)).toEqual({
+      matched: 0,
+      retried: 0,
+      errored: 0,
+      errors: [{ jobId: null, message: 'string boom' }],
+    });
   });
 });

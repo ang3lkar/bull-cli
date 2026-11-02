@@ -130,6 +130,10 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
           <ConfirmPrompt
             message={`Duplicate job ${snapshot.confirmDuplicateJobId}? Adds a new delayed job with the same payload. (y/n)`}
           />
+        ) : snapshot.confirmRetryAll !== null ? (
+          <ConfirmPrompt
+            message={`Retry all ${snapshot.confirmRetryAll.count} failed job${snapshot.confirmRetryAll.count === 1 ? '' : 's'} in "${snapshot.confirmRetryAll.queueName}"? They move back to waiting. (y/n)`}
+          />
         ) : snapshot.currentView.kind === 'queues' ? (
           <>
             <Breadcrumb view={snapshot.currentView} sort={snapshot.queueSort} />
