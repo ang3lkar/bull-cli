@@ -828,3 +828,104 @@ describe('runDoctor masking of scheme-less and query-string secrets', () => {
     });
   }
 });
+
+describe('runDoctor connection profiles', () => {
+  const userFile = JSON.stringify({
+    defaultProfile: 'local',
+    profiles: {
+      local: { redisUrl: 'redis://localhost:6379' },
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: a literal `${VAR}` config value
+      prod: { redisUrl: '${PROD_URL}', prefix: 'myapp' },
+    },
+  });
+  const withUserFile = (source = userFile): Partial<DoctorDeps> => ({
+    fileExists: (p) => p === '/u/config.json',
+    readFile: () => source,
+  });
+
+  it('names the profile as the source of the URL and prefix', async () => {
+    const { client } = fakeRedis();
+    const report = await runDoctor(
+      makeDeps(client, {
+        ...withUserFile(),
+        profileFlag: 'prod',
+        env: { PROD_URL: 'redis://:pw@prod:6379/2' },
+      }),
+    );
+    expect(byId(report, 'connection').message).toBe(
+      'redis://:****@prod:6379/2 (profile "prod"), DB 2, prefix "myapp" (profile "prod")',
+    );
+  });
+
+  it('uses defaultProfile without --profile, with the default prefix when the profile has none', async () => {
+    const { client } = fakeRedis();
+    const report = await runDoctor(makeDeps(client, withUserFile()));
+    expect(byId(report, 'connection').message).toBe(
+      'redis://localhost:6379 (profile "local"), DB 0, prefix "bull" (default)',
+    );
+  });
+
+  it('shows that REDIS_URL beats the profile', async () => {
+    const { client } = fakeRedis();
+    const report = await runDoctor(
+      makeDeps(client, {
+        ...withUserFile(),
+        profileFlag: 'prod',
+        env: { REDIS_URL: 'redis://env:6379' },
+      }),
+    );
+    expect(byId(report, 'connection').message).toBe(
+      'redis://env:6379 (REDIS_URL), DB 0, prefix "myapp" (profile "prod")',
+    );
+  });
+
+  it('fails the connection check and skips the rest for an unknown profile', async () => {
+    const createClient = vi.fn();
+    const report = await runDoctor(
+      makeDeps(fakeRedis().client, { ...withUserFile(), profileFlag: 'stage', createClient }),
+    );
+    expect(byId(report, 'config').status).toBe('ok');
+    expect(byId(report, 'connection')).toMatchObject({
+      status: 'fail',
+      message: 'Unknown profile "stage": available profiles: local, prod',
+    });
+    for (const id of ['ping', 'server', 'queues']) {
+      expect(byId(report, id).status).toBe('skip');
+    }
+    expect(createClient).not.toHaveBeenCalled();
+    expect(doctorExitCode(report)).toBe(1);
+  });
+
+  it('fails the connection check for an unset env variable', async () => {
+    const report = await runDoctor(
+      makeDeps(fakeRedis().client, { ...withUserFile(), profileFlag: 'prod' }),
+    );
+    expect(byId(report, 'connection')).toMatchObject({
+      status: 'fail',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: a literal `${VAR}` config value
+      message: 'profile "prod": redisUrl uses ${PROD_URL}, which is not set',
+    });
+    expect(byId(report, 'ping').status).toBe('skip');
+  });
+
+  it("can't honour --profile when a config file is invalid", async () => {
+    const report = await runDoctor(
+      makeDeps(fakeRedis().client, { ...withUserFile('{ nope'), profileFlag: 'prod' }),
+    );
+    expect(byId(report, 'config').status).toBe('fail');
+    expect(byId(report, 'connection')).toMatchObject({
+      status: 'fail',
+      message: 'Can\'t select profile "prod": a config file is invalid (see the config check)',
+    });
+    expect(byId(report, 'ping').status).toBe('skip');
+  });
+
+  it('falls back to flag/env/default without --profile when a config file is invalid', async () => {
+    const report = await runDoctor(makeDeps(fakeRedis().client, withUserFile('{ nope')));
+    expect(byId(report, 'connection')).toMatchObject({
+      status: 'ok',
+      message: 'redis://localhost:6379 (default), DB 0, prefix "bull" (default)',
+    });
+    expect(byId(report, 'ping').status).toBe('ok');
+  });
+});
