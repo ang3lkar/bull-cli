@@ -190,7 +190,8 @@ A missing file is perfectly fine and just falls back to defaults.
 ## Layout
 
 - **Queue list** — a full-width list with the queue name and lifecycle counters in order:
-  delayed, waiting, active, failed, completed. Paused queues carry a `(paused)` marker.
+  delayed, waiting, active, failed, completed. Paused queues carry a `(paused)` marker. The
+  heading shows the current sort, and `/` filters the list by name.
 - **Job list** — a full-width `ID`, `Name`, `State`, `Attempts`, `CreatedAt` table. The name
   column expands to fill the terminal. The status header provides counts and selection feedback.
 - **Schedulers** — the sixth tab of the job list: the queue's BullMQ job schedulers (repeatable
@@ -246,6 +247,12 @@ zero jobs, and a search that matches nothing names the query instead of the stat
 | `Enter` | Open selected queue's jobs |
 | `p` | Toggle pause/resume queue |
 | `Shift+D` | Drain queue (with confirmation prompt) |
+| `s` | Cycle the sort: name, total, failed, waiting, active, delayed (counts sort highest first) |
+| `/` | Filter queues by name (`Enter` keeps the filter, `Esc` clears it) |
+| `Esc` | Clear an accepted filter |
+
+While the filter input is open, every key (including `q`, `s`, `p`, `Shift+D`) types a character;
+`Ctrl+C` still quits. The filter stays applied when you enter a queue and come back.
 
 ### Job list
 

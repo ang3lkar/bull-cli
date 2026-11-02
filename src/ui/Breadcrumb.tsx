@@ -1,5 +1,5 @@
 import { Box, Text } from 'ink';
-import type { NavigationView } from '../core/store.js';
+import type { NavigationView, QueueSort } from '../core/store.js';
 import type { Tab } from '../core/types.js';
 
 export interface BreadcrumbProps {
@@ -14,6 +14,8 @@ export interface BreadcrumbProps {
    * in the navigation stack), so the trail reads `… > schedulers > <key> > job #id`.
    */
   schedulerKey?: string;
+  /** Queue list sort, shown as a dim suffix on the root crumb (`Queues · sorted by failed`). */
+  sort?: QueueSort;
 }
 
 interface Crumb {
@@ -67,7 +69,7 @@ function crumbsFor(
  * Location lives here rather than in the title bar, which is app chrome and
  * says nothing about where you are (see `CONTEXT.md`).
  */
-export function Breadcrumb({ view, status, schedulerKey }: BreadcrumbProps) {
+export function Breadcrumb({ view, status, schedulerKey, sort }: BreadcrumbProps) {
   const crumbs = crumbsFor(view, status, schedulerKey);
   const current = crumbs[crumbs.length - 1];
   return (
@@ -80,6 +82,7 @@ export function Breadcrumb({ view, status, schedulerKey }: BreadcrumbProps) {
           </Text>
         </Text>
       ))}
+      {sort !== undefined && view.kind === 'queues' && <Text dimColor> · sorted by {sort}</Text>}
     </Box>
   );
 }

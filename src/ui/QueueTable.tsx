@@ -3,7 +3,11 @@ import type { QueueCounts } from '../core/store.js';
 import type { QueueInfo } from '../core/types.js';
 
 export interface QueueTableProps {
+  /** The sorted, filtered queues to render. */
   queues: QueueInfo[];
+  /** All discovered queues, for the dim `N of M queues` line while filtered. */
+  totalCount?: number;
+  filterQuery?: string;
   counts: Readonly<Record<string, QueueCounts>>;
   selectedName: string | null;
   width?: number;
@@ -38,8 +42,19 @@ function Count({
 }
 
 /** Full-width queue table for the root of the navigation stack. */
-export function QueueTable({ queues, counts, selectedName, width }: QueueTableProps) {
+export function QueueTable({
+  queues,
+  totalCount,
+  filterQuery = '',
+  counts,
+  selectedName,
+  width,
+}: QueueTableProps) {
   const nameWidth = queueWidth(width);
+
+  if (queues.length === 0 && filterQuery.trim() !== '') {
+    return <Text dimColor>No queues match "{filterQuery}" (Esc clears)</Text>;
+  }
 
   return (
     <Box flexDirection="column">
@@ -88,6 +103,11 @@ export function QueueTable({ queues, counts, selectedName, width }: QueueTablePr
           </Box>
         );
       })}
+      {totalCount !== undefined && filterQuery.trim() !== '' && (
+        <Text dimColor>
+          {queues.length} of {totalCount} queues
+        </Text>
+      )}
     </Box>
   );
 }

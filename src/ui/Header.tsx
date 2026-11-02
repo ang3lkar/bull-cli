@@ -78,6 +78,8 @@ function shortcutsFor(view: NavigationView | undefined, status: Tab | undefined)
     { key: 'Enter', label: 'Jobs' },
     { key: 'p', label: 'Pause/resume' },
     { key: 'D', label: 'Drain' },
+    { key: 's', label: 'Sort' },
+    { key: '/', label: 'Filter' },
   ];
 }
 
@@ -121,7 +123,7 @@ function ShortcutLegend({
 
   // `minHeight`, not `height`: the legend reserves its full height so the
   // breadcrumb and every table below it stay on a fixed row as you navigate
-  // (the tallest column is 4 rows in the queue list, 5 in the job list and as
+  // (the tallest column is 5 rows in the queue list and the job list and as
   // few as 1 in job detail), while still being free to grow if a narrow
   // terminal ever wraps a cell rather than clipping it.
   return (

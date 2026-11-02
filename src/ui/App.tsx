@@ -131,10 +131,20 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
           />
         ) : snapshot.currentView.kind === 'queues' ? (
           <>
-            <Breadcrumb view={snapshot.currentView} />
+            <Breadcrumb view={snapshot.currentView} sort={snapshot.queueSort} />
+            {(snapshot.queueFilter.active || snapshot.queueFilter.query !== '') && (
+              <Box marginTop={1}>
+                <SearchBar
+                  query={snapshot.queueFilter.query}
+                  active={snapshot.queueFilter.active}
+                />
+              </Box>
+            )}
             <Box marginTop={1}>
               <QueueTable
-                queues={snapshot.queues}
+                queues={snapshot.visibleQueues}
+                totalCount={snapshot.queues.length}
+                filterQuery={snapshot.queueFilter.query}
                 counts={snapshot.queueCounts}
                 selectedName={snapshot.selectedQueueName}
                 width={contentWidth}
