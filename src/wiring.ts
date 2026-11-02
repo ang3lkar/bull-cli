@@ -107,14 +107,14 @@ export function createApp(
 
   const deps: StoreDeps = {
     discoverQueues: () => discoverQueues(redis, prefix),
-    fetchJobPage: (queueName, status, page) =>
-      safeFetch(registry, queueName, (queue) => fetchJobPage(queue, status, page)),
+    fetchJobPage: (queueName, status, page, pageSize) =>
+      safeFetch(registry, queueName, (queue) => fetchJobPage(queue, status, page, pageSize)),
     fetchQueueCounts: (queueName) =>
       safeFetch(registry, queueName, (queue) => fetchQueueCounts(queue)),
     getJobDetail: (queueName, jobId) =>
       safeFetch(registry, queueName, (queue) => getJobDetail(queue, jobId)),
-    fetchSchedulerPage: (queueName, page) =>
-      safeFetch(registry, queueName, (queue) => fetchSchedulerPage(queue, page)),
+    fetchSchedulerPage: (queueName, page, pageSize) =>
+      safeFetch(registry, queueName, (queue) => fetchSchedulerPage(queue, page, pageSize)),
     fetchSchedulerCount: (queueName) =>
       safeFetch(registry, queueName, (queue) => fetchSchedulerCount(queue)),
     getSchedulerDetail: (queueName, key) =>

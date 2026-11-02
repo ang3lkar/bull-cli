@@ -30,6 +30,12 @@ const DEFAULT_POLL_INTERVAL_MS = 3000;
 const DEFAULT_REFRESH_TIMEOUT_MS = 5000;
 /** How long a toast stays on screen before auto-dismissing. */
 const DEFAULT_TOAST_DURATION_MS = 4000;
+/**
+ * Rows per page of the job and scheduler lists until the UI reports how many
+ * fit (`setPageSize`). Matches `PAGE_SIZE` in `jobs.ts`, which the store can't
+ * import without pulling bullmq into `core`'s framework-free state machine.
+ */
+const DEFAULT_PAGE_SIZE = 10;
 
 export type Focus = 'sidebar' | 'jobs';
 export type NavigationView =
@@ -51,11 +57,17 @@ export type { QueueSort };
  */
 export interface StoreDeps {
   discoverQueues(): Promise<QueueInfo[]>;
-  fetchJobPage(queueName: string, status: JobStatus, page: number): Promise<JobPage>;
+  /** `pageSize` is the store's current page size (see `setPageSize`). */
+  fetchJobPage(
+    queueName: string,
+    status: JobStatus,
+    page: number,
+    pageSize: number,
+  ): Promise<JobPage>;
   /** Fetches counts without loading a page. Optional for lightweight test fakes. */
   fetchQueueCounts?(queueName: string): Promise<QueueCounts>;
   getJobDetail(queueName: string, jobId: string): Promise<JobDetail | null>;
-  fetchSchedulerPage(queueName: string, page: number): Promise<SchedulerPage>;
+  fetchSchedulerPage(queueName: string, page: number, pageSize: number): Promise<SchedulerPage>;
   /**
    * Scheduler count for the Schedulers tab label, fetched with every refresh
    * of a job-status tab (the scheduler tab itself takes it from the page).
@@ -115,6 +127,8 @@ export interface DashboardSnapshot {
   selectedQueueName: string | null;
   tab: Tab;
   page: number;
+  /** Rows per page of the job and scheduler lists; follows the terminal height via `setPageSize`. */
+  pageSize: number;
   jobPage: JobPage | null;
   /** Current page of the Schedulers tab; `null` on every other tab and while loading. */
   schedulerPage: SchedulerPage | null;
@@ -238,6 +252,7 @@ export class DashboardStore {
   private selectedQueueName: string | null = null;
   private tab: Tab = 'active';
   private page = 0;
+  private pageSize = DEFAULT_PAGE_SIZE;
   private jobPage: JobPage | null = null;
   private schedulerPage: SchedulerPage | null = null;
   private readonly schedulerCountByName = new Map<string, number>();
@@ -335,6 +350,7 @@ export class DashboardStore {
       selectedQueueName: this.selectedQueueName,
       tab: this.tab,
       page: this.page,
+      pageSize: this.pageSize,
       jobPage: this.jobPage,
       schedulerPage: this.schedulerPage,
       schedulerCount:
@@ -582,7 +598,11 @@ export class DashboardStore {
         const prevSchedulers = this.schedulerPage?.schedulers ?? [];
         const prevKey = this.selectedSchedulerKey;
 
-        const schedulerPage = await this.deps.fetchSchedulerPage(queueName, this.page);
+        const schedulerPage = await this.deps.fetchSchedulerPage(
+          queueName,
+          this.page,
+          this.pageSize,
+        );
         if (myGen !== this.refreshGeneration) {
           return;
         }
@@ -604,7 +624,7 @@ export class DashboardStore {
         // must never fail the job page, so it settles to `null` instead.
         const countPromise = this.deps.fetchSchedulerCount?.(queueName).catch(() => null);
         const [jobPage, schedulerCount] = await Promise.all([
-          this.deps.fetchJobPage(queueName, this.tab, this.page),
+          this.deps.fetchJobPage(queueName, this.tab, this.page, this.pageSize),
           countPromise,
         ]);
         if (myGen !== this.refreshGeneration) {
@@ -1050,6 +1070,43 @@ export class DashboardStore {
   private currentPageCount(): number | null {
     const page = this.tab === 'schedulers' ? this.schedulerPage : this.jobPage;
     return page ? page.pageCount : null;
+  }
+
+  /**
+   * Sets how many rows a page of the job or scheduler list holds. The UI
+   * calls this with however many rows fit the terminal, so the list is never
+   * handed more rows than it can show and `Page N of M` stays honest.
+   *
+   * The page is recomputed so the same row stays in view: the selected job
+   * (or scheduler) if there is one, otherwise the first row of the current
+   * page. It keeps showing the old rows until the new page arrives (the same
+   * as paging), and selection survives because `resolveSelectedJobId` keeps
+   * an id that is still on the new page, which this one is by construction.
+   */
+  setPageSize(size: number): void {
+    const next = Math.max(1, Math.floor(size));
+    if (!Number.isFinite(next) || next === this.pageSize) {
+      return;
+    }
+    const firstRow = this.page * this.pageSize;
+    const anchor = firstRow + Math.max(0, this.selectedRowIndex());
+    this.pageSize = next;
+    this.page = Math.floor(anchor / next);
+    this.invalidateInFlightRefresh();
+    this.emit();
+    if (this.selectedQueueName !== null) {
+      void this.refresh();
+    }
+  }
+
+  /** Index of the selected row on the current page, or -1 when nothing on it is selected. */
+  private selectedRowIndex(): number {
+    if (this.tab === 'schedulers') {
+      return (this.schedulerPage?.schedulers ?? []).findIndex(
+        (scheduler) => scheduler.key === this.selectedSchedulerKey,
+      );
+    }
+    return (this.jobPage?.jobs ?? []).findIndex((job) => job.id === this.selectedJobId);
   }
 
   nextPage(): void {

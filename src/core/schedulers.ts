@@ -24,13 +24,17 @@ export async function fetchSchedulerCount(queue: Queue): Promise<number> {
  * Fetches one page of job schedulers, soonest next run first (the repeat
  * zset's score is the next run time). Paging semantics match `fetchJobPage`.
  */
-export async function fetchSchedulerPage(queue: Queue, page: number): Promise<SchedulerPage> {
+export async function fetchSchedulerPage(
+  queue: Queue,
+  page: number,
+  pageSize: number = PAGE_SIZE,
+): Promise<SchedulerPage> {
   const totalCount = await queue.getJobSchedulersCount();
-  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
   const currentPage = Math.min(Math.max(page, 0), pageCount - 1);
 
-  const start = currentPage * PAGE_SIZE;
-  const raw = await queue.getJobSchedulers(start, start + PAGE_SIZE - 1, true);
+  const start = currentPage * pageSize;
+  const raw = await queue.getJobSchedulers(start, start + pageSize - 1, true);
 
   return {
     schedulers: raw.filter((scheduler) => scheduler != null).map(toSummary),

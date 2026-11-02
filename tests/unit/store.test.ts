@@ -29,10 +29,10 @@ const ZERO_COUNTS: Record<JobStatus, number> = {
   delayed: 0,
 };
 
-function paginate(jobs: JobSummary[], page: number): JobPage {
-  const pageCount = Math.max(1, Math.ceil(jobs.length / 10));
+function paginate(jobs: JobSummary[], page: number, size = 10): JobPage {
+  const pageCount = Math.max(1, Math.ceil(jobs.length / size));
   const clamped = Math.min(Math.max(page, 0), pageCount - 1);
-  const slice = jobs.slice(clamped * 10, clamped * 10 + 10);
+  const slice = jobs.slice(clamped * size, clamped * size + size);
   return { jobs: slice, totalCount: jobs.length, page: clamped, pageCount, counts: ZERO_COUNTS };
 }
 
@@ -66,10 +66,12 @@ function createFakeDeps(state: FakeState): StoreDeps {
     // entered — the fake must match, or the tabCounts tests below run in a
     // configuration production never produces.
     fetchQueueCounts: vi.fn(async (queueName: string) => countsForQueue(state, queueName)),
-    fetchJobPage: vi.fn(async (queueName: string, status: JobStatus, page: number) => ({
-      ...paginate(state.jobs[jobKey(queueName, status)] ?? [], page),
-      counts: countsForQueue(state, queueName),
-    })),
+    fetchJobPage: vi.fn(
+      async (queueName: string, status: JobStatus, page: number, pageSize?: number) => ({
+        ...paginate(state.jobs[jobKey(queueName, status)] ?? [], page, pageSize),
+        counts: countsForQueue(state, queueName),
+      }),
+    ),
     getJobDetail: vi.fn(async (queueName: string, jobId: string) => {
       return state.details[detailKey(queueName, jobId)] ?? null;
     }),
@@ -2303,5 +2305,119 @@ describe('DashboardStore: dispose', () => {
 
     store.dispose();
     expect(vi.getTimerCount()).toBeLessThan(before);
+  });
+});
+
+describe('DashboardStore: setPageSize', () => {
+  const jobs = (n: number) => Array.from({ length: n }, (_, i) => makeJob(`j${i}`, 'job'));
+
+  async function storeWith(n: number) {
+    const deps = createFakeDeps({
+      queues: [makeQueue('a')],
+      jobs: { [jobKey('a', 'delayed')]: jobs(n) },
+      details: {},
+    });
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+    store.pushJobsView();
+    await flush();
+    return { deps, store };
+  }
+
+  it('defaults to 10 rows and fetches with the new size once set', async () => {
+    const { deps, store } = await storeWith(25);
+    expect(store.getSnapshot().pageSize).toBe(10);
+    expect(deps.fetchJobPage).toHaveBeenLastCalledWith('a', 'delayed', 0, 10);
+
+    store.setPageSize(4);
+    await flush();
+
+    expect(store.getSnapshot().pageSize).toBe(4);
+    expect(deps.fetchJobPage).toHaveBeenLastCalledWith('a', 'delayed', 0, 4);
+    expect(store.getSnapshot().visibleJobs.map((j) => j.id)).toEqual(['j0', 'j1', 'j2', 'j3']);
+    expect(store.getSnapshot().jobPage?.pageCount).toBe(7);
+  });
+
+  it('keeps the selected job on screen when the page shrinks', async () => {
+    const { store } = await storeWith(25);
+    store.nextPage(); // j10..j19
+    await flush();
+    for (let i = 0; i < 7; i++) store.selectNextJob(); // j17
+    expect(store.getSnapshot().selectedJobId).toBe('j17');
+
+    store.setPageSize(4);
+    await flush();
+
+    expect(store.getSnapshot().page).toBe(4); // j16..j19
+    expect(store.getSnapshot().selectedJobId).toBe('j17');
+    expect(store.getSnapshot().visibleJobs.map((j) => j.id)).toContain('j17');
+  });
+
+  it('keeps the selected job on screen when the page grows back', async () => {
+    const { store } = await storeWith(25);
+    store.setPageSize(3);
+    await flush();
+    store.nextPage();
+    store.nextPage(); // j6..j8
+    await flush();
+    store.selectNextJob(); // j7
+
+    store.setPageSize(10);
+    await flush();
+
+    expect(store.getSnapshot().page).toBe(0);
+    expect(store.getSnapshot().selectedJobId).toBe('j7');
+  });
+
+  it('anchors on the first row of the page when nothing is selected', async () => {
+    const deps = createFakeDeps({ queues: [makeQueue('a')], jobs: {}, details: {} });
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+    store.setPageSize(5);
+    expect(store.getSnapshot().page).toBe(0);
+  });
+
+  it('clamps to at least 1 row and ignores repeats and non-finite sizes', async () => {
+    const { deps, store } = await storeWith(5);
+    const calls = () => (deps.fetchJobPage as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    store.setPageSize(-3);
+    await flush();
+    expect(store.getSnapshot().pageSize).toBe(1);
+
+    const before = calls();
+    store.setPageSize(1);
+    store.setPageSize(0.5); // floors to 0, clamps to 1: unchanged
+    store.setPageSize(Number.NaN);
+    store.setPageSize(Number.POSITIVE_INFINITY);
+    await flush();
+    expect(calls()).toBe(before);
+    expect(store.getSnapshot().pageSize).toBe(1);
+  });
+
+  it('does not fetch while no queue is selected', async () => {
+    const deps = createFakeDeps({ queues: [], jobs: {}, details: {} });
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+    const discoveries = (deps.discoverQueues as ReturnType<typeof vi.fn>).mock.calls.length;
+    store.setPageSize(3);
+    await flush();
+    expect(store.getSnapshot().pageSize).toBe(3);
+    expect(deps.discoverQueues).toHaveBeenCalledTimes(discoveries);
+  });
+
+  it('a slow fetch at the old size cannot overwrite the new page', async () => {
+    const { deps, store } = await storeWith(25);
+    const slow = deferred<JobPage>();
+    (deps.fetchJobPage as ReturnType<typeof vi.fn>).mockReturnValueOnce(slow.promise);
+    void store.refresh();
+    await flush();
+
+    store.setPageSize(4);
+    await flush();
+    slow.resolve(paginate(jobs(25), 0, 10));
+    await flush();
+
+    expect(store.getSnapshot().visibleJobs).toHaveLength(4);
   });
 });

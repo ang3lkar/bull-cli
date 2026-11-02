@@ -1,4 +1,5 @@
-import { Box, Text } from 'ink';
+import { Box, type DOMElement, measureElement, Text } from 'ink';
+import { useEffect, useRef } from 'react';
 import { statusForState } from '../core/format.js';
 import type { DashboardStore } from '../core/store.js';
 import { Breadcrumb } from './Breadcrumb.js';
@@ -19,6 +20,14 @@ import { SchedulerTable } from './SchedulerTable.js';
 import { SearchBar } from './SearchBar.js';
 import { Tabs } from './Tabs.js';
 import { Toast } from './Toast.js';
+
+/** Below this many terminal rows the blank spacer rows of the job list collapse. */
+export const COMPACT_BELOW_ROWS = 24;
+
+/** Rows of the table area that never hold a job: the column header and the page indicator (with its spacer unless compact). */
+function tableChromeRows(compact: boolean): number {
+  return 1 + (compact ? 1 : 2);
+}
 
 export interface AppProps {
   store: DashboardStore;
@@ -43,6 +52,30 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
   const { columns, rows } = useTerminalDimensions();
   // Root padding consumes one column on each side.
   const contentWidth = columns === undefined ? undefined : Math.max(1, columns - 2);
+  // Fit mode needs a real terminal height to fit into; ink-testing-library has
+  // none, and there the layout stays content-sized exactly as before.
+  const fit = rows !== undefined;
+  const compact = fit && rows < COMPACT_BELOW_ROWS;
+  const tableAreaRef = useRef<DOMElement>(null);
+  const toastRef = useRef<DOMElement>(null);
+
+  // The job/scheduler list pages to however many rows fit (issue #5): the
+  // table area is the one flexible box (zero basis, clipped), so its measured
+  // height is the space left after every other piece of chrome — wrapped tab
+  // rows, the search bar, the legend — without counting any of it by hand,
+  // and it doesn't depend on the rows inside it, so this settles after one
+  // `setPageSize`. Toast rows are added back: a toast is transient, and
+  // letting it shrink the page would re-page the list twice every few
+  // seconds; while one shows, the clipped area hides the bottom row(s)
+  // (the page indicator first) instead.
+  useEffect(() => {
+    if (!fit || tableAreaRef.current === null) {
+      return;
+    }
+    const area = measureElement(tableAreaRef.current).height;
+    const toast = toastRef.current === null ? 0 : measureElement(toastRef.current).height;
+    store.setPageSize(area + toast - tableChromeRows(compact));
+  });
 
   if (snapshot.connection.state === 'error') {
     return (
@@ -116,7 +149,11 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
         status={actionStatus}
         width={contentWidth}
       />
-      <Box flexDirection="column" flexGrow={1}>
+      <Box
+        flexDirection="column"
+        flexGrow={1}
+        {...(fit ? { flexShrink: 1, flexBasis: 0, overflow: 'hidden' as const } : {})}
+      >
         {snapshot.confirmDeleteJobId !== null ? (
           <ConfirmPrompt
             message={`Delete job ${snapshot.confirmDeleteJobId}? This cannot be undone. (y/n)`}
@@ -153,8 +190,10 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
           </>
         ) : snapshot.currentView.kind === 'jobs' ? (
           <>
-            <Breadcrumb view={snapshot.currentView} status={snapshot.tab} />
-            <Box marginTop={1}>
+            <Box flexShrink={0}>
+              <Breadcrumb view={snapshot.currentView} status={snapshot.tab} />
+            </Box>
+            <Box marginTop={compact ? 0 : 1} flexShrink={0}>
               <Tabs
                 active={snapshot.tab}
                 counts={snapshot.tabCounts}
@@ -163,11 +202,15 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
             </Box>
             {snapshot.tab !== 'schedulers' &&
               (snapshot.search.active || snapshot.search.query !== '') && (
-                <Box marginTop={1}>
+                <Box marginTop={compact ? 0 : 1} flexShrink={0}>
                   <SearchBar query={snapshot.search.query} active={snapshot.search.active} />
                 </Box>
               )}
-            <Box marginTop={1}>
+            <Box
+              ref={tableAreaRef}
+              marginTop={compact ? 0 : 1}
+              {...(fit ? { flexGrow: 1, flexBasis: 0, overflow: 'hidden' as const } : {})}
+            >
               {snapshot.tab === 'schedulers' ? (
                 <SchedulerTable
                   schedulers={snapshot.schedulerPage?.schedulers ?? []}
@@ -176,6 +219,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
                   pageCount={snapshot.schedulerPage?.pageCount ?? 1}
                   width={contentWidth}
                   loading={snapshot.jobsLoading}
+                  compact={compact}
                 />
               ) : (
                 <JobTable
@@ -189,6 +233,7 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
                   loading={snapshot.jobsLoading}
                   hiddenBySearch={snapshot.jobsHiddenBySearch}
                   searchQuery={snapshot.search.query}
+                  compact={compact}
                 />
               )}
             </Box>
@@ -220,8 +265,12 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
           </>
         )}
       </Box>
-      <Toast toasts={snapshot.toasts} />
-      <Footer redisUrl={snapshot.redisUrl} prefix={snapshot.prefix} />
+      <Box ref={toastRef} flexDirection="column" flexShrink={0}>
+        <Toast toasts={snapshot.toasts} />
+      </Box>
+      <Box flexDirection="column" flexShrink={0}>
+        <Footer redisUrl={snapshot.redisUrl} prefix={snapshot.prefix} />
+      </Box>
     </Box>
   );
 }

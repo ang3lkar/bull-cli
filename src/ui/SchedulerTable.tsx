@@ -12,6 +12,8 @@ export interface SchedulerTableProps {
   width?: number;
   /** `true` while the page is still being fetched, so an empty list isn't "nothing here". */
   loading?: boolean;
+  /** Short terminal: drop the blank row above the page indicator. */
+  compact?: boolean;
   /** Clock for the relative `Next run` column, injectable for tests. */
   now?: number;
 }
@@ -88,10 +90,13 @@ export function SchedulerTable({
   pageCount,
   width,
   loading = false,
+  compact = false,
   now = Date.now(),
 }: SchedulerTableProps) {
   return (
-    <Box flexDirection="column">
+    // `flexShrink={0}`: in a short terminal the table area clips this box at
+    // its bottom edge rather than letting Yoga squeeze rows out of the middle.
+    <Box flexDirection="column" flexShrink={0}>
       <Box flexShrink={0}>
         <Text bold>{headerLine(width)}</Text>
       </Box>
@@ -116,7 +121,7 @@ export function SchedulerTable({
               </Text>
             );
           })}
-          <Box justifyContent="flex-end" marginTop={1}>
+          <Box justifyContent="flex-end" marginTop={compact ? 0 : 1}>
             <Text dimColor>
               Page {page + 1} of {pageCount}
             </Text>

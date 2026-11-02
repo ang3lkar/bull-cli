@@ -20,6 +20,8 @@ export interface JobTableProps {
    * tab row's own count right above it.
    */
   loading?: boolean;
+  /** Short terminal: drop the blank row above the page indicator. */
+  compact?: boolean;
   /**
    * How many rows on this page the active search hides (see
    * `DashboardSnapshot.jobsHiddenBySearch`). Non-zero with an empty `jobs`
@@ -207,11 +209,14 @@ export function JobTable({
   width,
   counts,
   loading = false,
+  compact = false,
   hiddenBySearch = 0,
   searchQuery = '',
 }: JobTableProps) {
   return (
-    <Box flexDirection="column">
+    // `flexShrink={0}`: in a short terminal the table area clips this box at
+    // its bottom edge rather than letting Yoga squeeze rows out of the middle.
+    <Box flexDirection="column" flexShrink={0}>
       {/*
         `flexShrink={0}`: when the view is taller than the terminal the overflow
         is pushed into this table (see `Header`), and Yoga would otherwise clip
@@ -243,7 +248,7 @@ export function JobTable({
               </Text>
             );
           })}
-          <Box justifyContent="flex-end" marginTop={1}>
+          <Box justifyContent="flex-end" marginTop={compact ? 0 : 1}>
             <Text dimColor>
               Page {page + 1} of {pageCount}
             </Text>
