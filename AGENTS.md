@@ -43,7 +43,7 @@ from coverage entirely (it's the process entrypoint, exercised only manually/e2e
 
 Integration and e2e tests each use their own Redis **logical DB** (not DB 0, so they never collide
 with `npm run seed` or each other): discovery=1, jobs=2, actions=3, e2e=4, wiring=5, registry=13,
-jsonOutput=6, schedulers=7, doctor=8, redis=14, sanity=15.
+jsonOutput=6, schedulers=7, doctor=8, retry=9, redis=14, sanity=15.
 
 ## Architecture
 

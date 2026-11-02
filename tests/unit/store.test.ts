@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DashboardStore, type StoreDeps } from '../../src/core/store.js';
+import { DashboardStore, retrySummaryMessage, type StoreDeps } from '../../src/core/store.js';
 import type {
   ActionResult,
   JobDetail,
@@ -87,6 +87,7 @@ function createFakeDeps(state: FakeState): StoreDeps {
       duplicate: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       togglePause: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       drain: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
+      retryAll: vi.fn(async () => ({ matched: 0, retried: 0, errored: 0, errors: [] })),
     },
     syncRegistry: vi.fn(async () => {}),
   };
@@ -2303,5 +2304,137 @@ describe('DashboardStore: dispose', () => {
 
     store.dispose();
     expect(vi.getTimerCount()).toBeLessThan(before);
+  });
+});
+
+describe('DashboardStore: bulk retry flow', () => {
+  const failedState = (n = 3): FakeState => ({
+    queues: [makeQueue('a'), makeQueue('b')],
+    jobs: {
+      [jobKey('a', 'failed')]: Array.from({ length: n }, (_, i) => makeJob(`f${i}`, 'job')),
+    },
+    details: {},
+  });
+
+  async function onFailedTab(state: FakeState) {
+    const deps = createFakeDeps(state);
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+    store.pushJobsView();
+    store.selectTab('failed');
+    await flush();
+    return { deps, store };
+  }
+
+  it('captures the queue and failed count, and cancel aborts without calling the action', async () => {
+    const { deps, store } = await onFailedTab(failedState(3));
+
+    store.cancelRetryAll(); // no-op, nothing pending
+    store.requestRetryAll();
+    expect(store.getSnapshot().confirmRetryAll).toEqual({ queueName: 'a', count: 3 });
+    store.requestRetryAll(); // no-op, already pending
+
+    store.cancelRetryAll();
+    expect(store.getSnapshot().confirmRetryAll).toBeNull();
+    expect(deps.actions.retryAll).not.toHaveBeenCalled();
+  });
+
+  it('confirming calls retryAll, toasts the counts and refreshes', async () => {
+    const { deps, store } = await onFailedTab(failedState(3));
+    (deps.actions.retryAll as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      matched: 3,
+      retried: 3,
+      errored: 0,
+      errors: [],
+    });
+    const callsBefore = (deps.discoverQueues as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    store.requestRetryAll();
+    await store.confirmRetryAll();
+
+    expect(deps.actions.retryAll).toHaveBeenCalledWith('a');
+    expect(store.getSnapshot().confirmRetryAll).toBeNull();
+    expect(store.getSnapshot().toasts.map((t) => t.message)).toEqual(['Retried 3 failed jobs']);
+    expect(deps.discoverQueues).toHaveBeenCalledTimes(callsBefore + 1);
+  });
+
+  it('confirms against the queue captured at request time', async () => {
+    const { deps, store } = await onFailedTab(failedState(2));
+    store.requestRetryAll();
+    store.selectQueue('b');
+    await store.confirmRetryAll();
+    expect(deps.actions.retryAll).toHaveBeenCalledWith('a');
+  });
+
+  it('toasts instead of prompting when the queue has no failed jobs', async () => {
+    const { deps, store } = await onFailedTab(failedState(0));
+    store.requestRetryAll();
+    expect(store.getSnapshot().confirmRetryAll).toBeNull();
+    expect(store.getSnapshot().toasts.map((t) => t.message)).toEqual(['No failed jobs to retry']);
+    expect(deps.actions.retryAll).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op outside the Failed tab of the job list', async () => {
+    const deps = createFakeDeps(failedState(2));
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+
+    store.requestRetryAll(); // queue list
+    expect(store.getSnapshot().confirmRetryAll).toBeNull();
+
+    store.pushJobsView(); // job list, Active tab
+    store.requestRetryAll();
+    expect(store.getSnapshot().confirmRetryAll).toBeNull();
+    expect(store.getSnapshot().toasts).toEqual([]);
+  });
+
+  it('is a no-op when no queue is selected', async () => {
+    const deps = createFakeDeps({ queues: [], jobs: {}, details: {} });
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+    store.pushJobsView();
+    store.selectTab('failed');
+    store.requestRetryAll();
+    expect(store.getSnapshot().confirmRetryAll).toBeNull();
+  });
+
+  it('confirmRetryAll without a prior request is a no-op', async () => {
+    const deps = createFakeDeps({ queues: [], jobs: {}, details: {} });
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.confirmRetryAll();
+    expect(deps.actions.retryAll).not.toHaveBeenCalled();
+  });
+});
+
+describe('retrySummaryMessage', () => {
+  it('reports a clean run', () => {
+    expect(retrySummaryMessage({ matched: 1, retried: 1, errored: 0, errors: [] })).toBe(
+      'Retried 1 failed job',
+    );
+    expect(retrySummaryMessage({ matched: 4, retried: 4, errored: 0, errors: [] })).toBe(
+      'Retried 4 failed jobs',
+    );
+  });
+
+  it('reports a partial run with the errored count and the first error', () => {
+    expect(
+      retrySummaryMessage({
+        matched: 3,
+        retried: 2,
+        errored: 1,
+        errors: [{ jobId: '7', message: 'Job 7 not found' }],
+      }),
+    ).toBe('Retried 2 failed jobs, 1 errored: Job 7 not found');
+  });
+
+  it('reports a run where nothing was retried', () => {
+    expect(
+      retrySummaryMessage({
+        matched: 0,
+        retried: 0,
+        errored: 0,
+        errors: [{ jobId: null, message: 'Connection is closed.' }],
+      }),
+    ).toBe('Could not retry failed jobs: Connection is closed.');
   });
 });

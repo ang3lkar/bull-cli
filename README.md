@@ -62,12 +62,17 @@ by scanning for `bull:*:meta` keys — no configuration file is required to get 
 ```
 bull-cli [options]
 bull-cli doctor [options]   # diagnose config, connection and queue discovery
+bull-cli retry --queue <name> (--dry-run | --yes) [--job-id <id> | --since <duration>]
 
 Options:
   --redis <url>      Redis connection URL (overrides REDIS_URL env var)
   --prefix <prefix>  BullMQ key prefix (overrides BULLMQ_PREFIX env var)
   --output <format>  Output mode (supported: json)
-  --queue <name>     Queue filter for --output=json
+  --queue <name>     Queue filter for --output=json; the queue to act on for retry
+  --job-id <id>      retry: only this failed job
+  --since <duration> retry: only jobs that failed within this window (30s, 15m, 2h, 7d, 1w)
+  --dry-run          retry: report what would be retried without changing anything
+  --yes              retry: actually retry
   -h, --help         Show help
   -v, --version      Show version
 ```
@@ -145,6 +150,42 @@ Notes:
 - `--queue=<name>` filters output to a single queue.
 - `--queue` requires `--output=json`.
 - Unknown queue names return an error and exit with status `1`.
+
+### Retrying failed jobs from a script
+
+`bull-cli retry` moves failed jobs back to waiting without opening the dashboard. It needs no TTY,
+so it works in CI, cron jobs and incident runbooks:
+
+```sh
+bull-cli retry --queue email --dry-run              # how many would be retried?
+bull-cli retry --queue email --yes                  # retry every failed job
+bull-cli retry --queue email --since 2h --yes       # only jobs that failed in the last 2 hours
+bull-cli retry --queue email --job-id 42 --yes      # just one job
+```
+
+It always prints a JSON summary:
+
+```json
+{
+  "queue": "email",
+  "dryRun": false,
+  "filter": { "failedSince": "2026-11-02T10:00:00.000Z" },
+  "matched": 3,
+  "retried": 2,
+  "errored": 1,
+  "errors": [{ "jobId": "17", "message": "Job 17 not found" }]
+}
+```
+
+Notes:
+
+- It changes data, so it refuses to run unless you pass `--dry-run` or `--yes` (exactly one).
+- `--since` takes a number and a unit: `s`, `m`, `h`, `d` or `w`. It can't be combined with
+  `--job-id`.
+- `errored` counts matched jobs whose retry failed. Problems that aren't about a matched job (no
+  connection, a missing queue, a `--job-id` that isn't failed) appear only in `errors`.
+- The exit status is `1` if `errors` is non-empty: a retry failed, the queue doesn't exist, or
+  Redis can't be reached. Otherwise it's `0`.
 
 It runs fullscreen, in the terminal's alternate screen buffer (like vim or htop); quitting —
 `q`, `Ctrl+C`, or a `kill` — restores the shell exactly as it was, with no dashboard frames left
@@ -270,6 +311,7 @@ While the filter input is open, every key (including `q`, `s`, `p`, `Shift+D`) t
 | `Enter` | Open job detail |
 | `/` | Open search bar (filters by job ID or name) |
 | `R` | Retry job (failed jobs only; shown only for Failed) |
+| `Shift+A` | Retry all failed jobs in the queue (Failed tab only; confirmation prompt shows the count) |
 | `Shift+D` | Delete job (with confirmation prompt) |
 | `p` | Promote a delayed job to waiting (shown only for Delayed) |
 | `c` | Duplicate job — clones its payload as a new delayed job (with confirmation prompt) |
@@ -284,7 +326,7 @@ While the filter input is open, every key (including `q`, `s`, `p`, `Shift+D`) t
 | `Enter` | Open scheduler detail |
 | `Esc` / `h` | Return to the queue list |
 
-The job-only keys (`/`, `R`, `Shift+D`, `p`, `c`) do nothing here.
+The job-only keys (`/`, `R`, `Shift+A`, `Shift+D`, `p`, `c`) do nothing here.
 
 ### Scheduler detail
 

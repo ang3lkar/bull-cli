@@ -87,6 +87,7 @@ function setup() {
       duplicate: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       togglePause: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       drain: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
+      retryAll: vi.fn(async () => ({ matched: 0, retried: 0, errored: 0, errors: [] })),
     },
     syncRegistry: vi.fn(async () => {}),
   };
@@ -299,6 +300,46 @@ describe('App: stack navigation', () => {
     await flush();
     expect(store.getSnapshot().confirmDeleteJobId).toBe('failed-1');
     expect(store.getSnapshot().currentView.kind).toBe('jobs');
+  });
+
+  it('A on the Failed tab asks before retrying all failed jobs; y confirms, n cancels', async () => {
+    const { stdin, store, deps, lastFrame } = await mount();
+    stdin.write('\r');
+    await flush();
+    stdin.write('4');
+    await flush();
+    const failed = store.getSnapshot().tabCounts?.failed ?? 0;
+    expect(failed).toBeGreaterThan(0);
+
+    stdin.write('A');
+    await flush();
+    expect(store.getSnapshot().confirmRetryAll).toEqual({ queueName: 'emailQ', count: failed });
+    expect(lastFrame()).toContain(`Retry all ${failed} failed job`);
+
+    stdin.write('H'); // swallowed while the prompt is up
+    await flush();
+    expect(store.getSnapshot().currentView.kind).toBe('jobs');
+
+    stdin.write('n');
+    await flush();
+    expect(store.getSnapshot().confirmRetryAll).toBeNull();
+    expect(deps.actions.retryAll).not.toHaveBeenCalled();
+
+    stdin.write('A');
+    await flush();
+    stdin.write('y');
+    await flush();
+    expect(deps.actions.retryAll).toHaveBeenCalledWith('emailQ');
+    expect(store.getSnapshot().confirmRetryAll).toBeNull();
+  });
+
+  it('A does nothing outside the Failed tab', async () => {
+    const { stdin, store } = await mount();
+    stdin.write('\r');
+    await flush();
+    stdin.write('A');
+    await flush();
+    expect(store.getSnapshot().confirmRetryAll).toBeNull();
   });
 
   it('filters in the job view and switches status with numeric keys', async () => {
