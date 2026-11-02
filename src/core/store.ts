@@ -1,4 +1,5 @@
 import { filterJobs } from './filter.js';
+import { filterQueues, QUEUE_SORT_ORDER, type QueueSort, sortQueues } from './queueList.js';
 import type {
   ActionResult,
   ConnectionStatus,
@@ -38,6 +39,8 @@ export type NavigationView =
   | { kind: 'scheduler'; queueName: string; key: string };
 
 export type QueueCounts = Record<JobStatus, number>;
+
+export type { QueueSort };
 
 /**
  * Everything the store needs from the outside world, expressed purely in
@@ -98,7 +101,13 @@ export interface DashboardSnapshot {
   redisUrl: string;
   /** BullMQ key prefix in use, shown in the footer so it's clear which queues these are. */
   prefix: string;
+  /** Every discovered queue, in discovery order — the EmptyState check reads this. */
   queues: QueueInfo[];
+  /** `queues` after the sort and the name filter; the selected queue is always in here (or `null` when empty). */
+  visibleQueues: QueueInfo[];
+  queueSort: QueueSort;
+  /** Name filter of the root queue list; separate from the job `search`, which selection changes reset. */
+  queueFilter: { active: boolean; query: string };
   /** Last-known counts keyed by queue name, for the top-level queue table. */
   queueCounts: Readonly<Record<string, QueueCounts>>;
   navigationStack: readonly NavigationView[];
@@ -238,6 +247,9 @@ export class DashboardStore {
   private selectedJobId: string | null = null;
   private searchActive = false;
   private searchQuery = '';
+  private queueSort: QueueSort = 'name';
+  private queueFilterActive = false;
+  private queueFilterQuery = '';
   private detail: JobDetail | null = null;
   private detailLoading = false;
   /** See `DashboardSnapshot.jobsLoading`. */
@@ -314,6 +326,9 @@ export class DashboardStore {
       redisUrl: this.redisUrl,
       prefix: this.prefix,
       queues: this.queues,
+      visibleQueues: this.visibleQueuesList(),
+      queueSort: this.queueSort,
+      queueFilter: { active: this.queueFilterActive, query: this.queueFilterQuery },
       queueCounts,
       navigationStack: this.navigationStack,
       currentView: this.navigationStack[this.navigationStack.length - 1],
@@ -421,6 +436,7 @@ export class DashboardStore {
         // Bump the generation so a late-resolving `doRefreshWork` can't
         // apply stale mutations after we've already moved on.
         this.refreshGeneration++;
+        this.closeTextInputs();
         this.connection = {
           state: 'error',
           url: this.redisUrl,
@@ -434,6 +450,7 @@ export class DashboardStore {
       }
     } catch (err) {
       if (myGen === this.refreshGeneration) {
+        this.closeTextInputs();
         this.connection = {
           state: 'error',
           url: this.redisUrl,
@@ -449,6 +466,28 @@ export class DashboardStore {
       this.refreshing = false;
       this.emit();
     }
+  }
+
+  /**
+   * Closes the job search and queue filter inputs, keeping their queries (like
+   * Enter). The error and empty-queues screens render no input, but the
+   * keymap's capture gates would still treat `q` as a literal character there,
+   * leaving the user unable to quit.
+   */
+  private closeTextInputs(): void {
+    this.searchActive = false;
+    this.queueFilterActive = false;
+  }
+
+  /**
+   * Whether the dashboard body (which renders the search/filter inputs) is
+   * on screen, mirroring `App`'s render branches: not the connection-error,
+   * loading or no-queues screens. Opening an input anywhere else would leave
+   * an invisible capture gate that swallows `q`. A reconnect (`connecting`)
+   * keeps the body on screen, so it still counts as shown.
+   */
+  private inputsShown(): boolean {
+    return this.connection.state !== 'error' && this.initialLoadComplete && this.queues.length > 0;
   }
 
   /**
@@ -492,7 +531,7 @@ export class DashboardStore {
    * still-navigable job table, and a deduped toast reports it.
    */
   private async doRefreshWork(myGen: number): Promise<void> {
-    const oldQueues = this.queues;
+    const oldVisible = this.visibleQueuesList();
     const oldSelectedQueueName = this.selectedQueueName;
 
     const discovered = await this.deps.discoverQueues();
@@ -501,10 +540,13 @@ export class DashboardStore {
     }
 
     this.queues = discovered;
+    if (discovered.length === 0) {
+      this.closeTextInputs();
+    }
     this.selectedQueueName = this.resolveSelectedQueueName(
       oldSelectedQueueName,
-      oldQueues,
-      discovered,
+      oldVisible,
+      this.visibleQueuesList(),
     );
     const queueName = this.selectedQueueName;
     const names = discovered.map((q) => q.name);
@@ -691,7 +733,7 @@ export class DashboardStore {
     this.schedulerDetail = detail;
   }
 
-  /** Preserves the selected queue by name; clamps to the nearest remaining queue (by its old index) if it vanished, or `null` if none are left. */
+  /** Preserves the selected queue by name; clamps to the nearest remaining visible queue (by its old index in the visible order) if it vanished, or `null` if none are visible. */
   private resolveSelectedQueueName(
     prevName: string | null,
     prevQueues: QueueInfo[],
@@ -709,10 +751,10 @@ export class DashboardStore {
     const oldIndex = prevQueues.findIndex((q) => q.name === prevName);
     // `oldIndex < 0` is defensive/unreachable in practice: `prevName` always
     // comes from `this.selectedQueueName`, which the store only ever sets
-    // to a name that was present in `this.queues` (the same array
-    // `prevQueues` captures here) — either via `selectQueue` (which
-    // validates membership) or by a previous `doRefreshWork` resolution
-    // (which always picks a name from the queues it just set).
+    // to a name in the visible list (`prevQueues` is that list as captured
+    // before this refresh) — via `selectQueue`/`reconcileQueueSelection`
+    // (which pick from the visible list) or a previous `doRefreshWork`
+    // resolution (which picks from the visible list it just computed).
     /* v8 ignore next */
     const clamped = oldIndex < 0 ? 0 : Math.min(oldIndex, nextQueues.length - 1);
     return nextQueues[clamped].name;
@@ -791,6 +833,9 @@ export class DashboardStore {
   onConnectionStatus(status: ConnectionStatus): void {
     const wasReady = this.connection.state === 'ready';
     this.connection = status;
+    if (status.state === 'error') {
+      this.closeTextInputs();
+    }
     this.emit();
     if (status.state === 'ready' && !wasReady) {
       void this.refresh();
@@ -866,29 +911,86 @@ export class DashboardStore {
   }
 
   /**
-   * Selects a queue by name or (0-based) index into the current `queues`
-   * list. Resets page, selected job, and search — but keeps the current
-   * tab (only `selectTab` changes the tab).
+   * The sorted, then name-filtered queue list the root view renders. Sorting
+   * is client-side over `queues` + the last-known counts, so it never needs a
+   * fetch.
+   */
+  private visibleQueuesList(): QueueInfo[] {
+    return filterQueues(
+      sortQueues(this.queues, this.queueCountsByName, this.queueSort),
+      this.queueFilterQuery,
+    );
+  }
+
+  /**
+   * Selects a queue by name or (0-based) index into the VISIBLE queue list.
+   * Resets page, selected job, and search — but keeps the current
+   * tab (only `selectTab` changes the tab). Never touches the queue filter.
    */
   selectQueue(nameOrIndex: string | number): void {
-    let name: string | undefined;
-    if (typeof nameOrIndex === 'number') {
-      const queue = this.queues[nameOrIndex];
-      name = queue ? queue.name : undefined;
-    } else {
-      name = nameOrIndex;
-    }
-    if (name === undefined || name === this.selectedQueueName) {
+    const visible = this.visibleQueuesList();
+    const name = typeof nameOrIndex === 'number' ? visible[nameOrIndex]?.name : nameOrIndex;
+    if (name === undefined || !visible.some((q) => q.name === name)) {
       return;
     }
-    if (!this.queues.some((q) => q.name === name)) {
-      return;
+    if (this.setSelectedQueue(name)) {
+      this.emit();
+      void this.refresh();
+    }
+  }
+
+  /**
+   * Changes the selected queue without emitting or refreshing; returns whether
+   * it changed (the caller then emits and refreshes). `null` (nothing visible)
+   * leaves no job page and no selected job.
+   */
+  private setSelectedQueue(name: string | null): boolean {
+    if (name === this.selectedQueueName) {
+      return false;
     }
     this.invalidateInFlightRefresh();
     this.selectedQueueName = name;
     this.resetQueueOrTabSwitch();
+    if (name === null) {
+      this.jobsLoading = false;
+    }
+    return true;
+  }
+
+  /** Moves the queue selection to the next entry of the visible list, clamped at the end. */
+  selectNextQueue(): void {
+    this.moveQueueSelection(1);
+  }
+
+  /** Moves the queue selection to the previous entry of the visible list, clamped at the start. */
+  selectPrevQueue(): void {
+    this.moveQueueSelection(-1);
+  }
+
+  private moveQueueSelection(direction: 1 | -1): void {
+    const visible = this.visibleQueuesList();
+    if (visible.length === 0) {
+      return;
+    }
+    const idx = visible.findIndex((q) => q.name === this.selectedQueueName);
+    const nextIdx = idx < 0 ? 0 : Math.min(Math.max(idx + direction, 0), visible.length - 1);
+    this.selectQueue(visible[nextIdx].name);
+  }
+
+  /**
+   * Restores the invariant that the selection is in the visible list (or
+   * `null` when it's empty) after the filter changed. Keeps a still-visible
+   * selection; otherwise takes the first visible queue. Emits, and refreshes
+   * whenever the selection changed (including to `null`, so counts don't lag a poll tick).
+   */
+  private reconcileQueueSelection(): void {
+    const visible = this.visibleQueuesList();
+    const stillVisible = visible.some((q) => q.name === this.selectedQueueName);
+    const changed = stillVisible ? false : this.setSelectedQueue(visible[0]?.name ?? null);
     this.emit();
-    void this.refresh();
+    if (changed) {
+      void this.refresh();
+    }
   }
 
   /** Selects a tab by value or (1-based) index, matching the `1`-`6` keys. */
@@ -934,10 +1036,11 @@ export class DashboardStore {
     this.jobPage = null;
     this.schedulerPage = null;
     this.selectedSchedulerKey = null;
-    // Every caller (`selectQueue`, `selectTab`, `pushJobsView`) triggers a
-    // refresh immediately after, so this is always paired with a fetch that
-    // will clear it. Paging deliberately does NOT come through here: it
-    // keeps the old rows on screen, so its `jobs.length` never lies.
+    // Every caller (`setSelectedQueue`, `selectTab`, `pushJobsView`) triggers
+    // a refresh immediately after, so this is always paired with a fetch that
+    // will clear it (a `null` queue selection resets this flag itself).
+    // Paging deliberately does NOT come through here: it keeps the old rows
+    // on screen, so its `jobs.length` never lies.
     this.jobsLoading = true;
     this.selectedJobId = null;
     this.searchActive = false;
@@ -1038,6 +1141,48 @@ export class DashboardStore {
     this.setFocus(this.focus === 'sidebar' ? 'jobs' : 'sidebar');
   }
 
+  // --- queue sort / filter ----------------------------------------------
+
+  /** `s`: advances the queue list sort (name → total → failed → waiting → active → delayed → name). Never fetches. */
+  cycleQueueSort(): void {
+    const idx = QUEUE_SORT_ORDER.indexOf(this.queueSort);
+    this.queueSort = QUEUE_SORT_ORDER[(idx + 1) % QUEUE_SORT_ORDER.length];
+    this.emit();
+  }
+
+  /** `/` on the queue list: opens the filter input, resuming any query still applied (like `openSearch`). */
+  openQueueFilter(): void {
+    if (!this.inputsShown() || this.queueFilterActive || this.currentView().kind !== 'queues') {
+      return;
+    }
+    this.queueFilterActive = true;
+    this.emit();
+  }
+
+  setQueueFilterQuery(query: string): void {
+    this.queueFilterQuery = query;
+    this.reconcileQueueSelection();
+  }
+
+  /** Enter while typing: closes the input but keeps the query filtering the list. */
+  acceptQueueFilter(): void {
+    if (!this.queueFilterActive) {
+      return;
+    }
+    this.queueFilterActive = false;
+    this.emit();
+  }
+
+  /** Escape: closes the input AND clears the query. */
+  closeQueueFilter(): void {
+    if (!this.queueFilterActive && this.queueFilterQuery === '') {
+      return;
+    }
+    this.queueFilterActive = false;
+    this.queueFilterQuery = '';
+    this.reconcileQueueSelection();
+  }
+
   // --- search -----------------------------------------------------------
 
   /**
@@ -1051,7 +1196,7 @@ export class DashboardStore {
    * never a stale query applied with no on-screen trace of it.
    */
   openSearch(): void {
-    if (this.searchActive || this.tab === 'schedulers') {
+    if (!this.inputsShown() || this.searchActive || this.tab === 'schedulers') {
       return;
     }
     this.searchActive = true;

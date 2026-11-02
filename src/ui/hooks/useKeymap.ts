@@ -6,12 +6,13 @@ import type { DashboardSnapshot, DashboardStore } from '../../core/store.js';
  * the spec's table is handled here, in one place, with a strict priority
  * order (highest first):
  *
- *   1. Search input capture (typing into the `/` search bar)
- *   2. Confirmation prompt (y/n/Escape)
- *   3. Current navigation-stack view
+ *   1. Input capture (typing into the job `/` search bar or the queue filter)
+ *   2. `q`
+ *   3. Confirmation prompt (y/n/Escape)
+ *   4. Current navigation-stack view
  *
- * `q` is deliberately checked first so it remains global, even while typing
- * a filter or viewing a confirmation prompt.
+ * `q` quits everywhere except while an input is open, where it is a literal
+ * character (names like `queue` need it). Ctrl+C still quits through cli.tsx.
  *
  * Latitude decisions the spec leaves open (documented here rather than left
  * implicit):
@@ -39,12 +40,17 @@ import type { DashboardSnapshot, DashboardStore } from '../../core/store.js';
  * - **`H` jumps to the queue dashboard from any depth** and, like `r`, is
  *   handled above the view switch so it works from both the job list and
  *   job detail. It sits *below* the search and confirmation gates, so it
- *   stays a literal character while typing a filter and is swallowed by a
+ *   stays a literal character while typing a filter (as do `s`, `p`, `D`
+ *   and `r`) and is swallowed by a
  *   pending confirmation.
  * - **`q` is context-sensitive, not a global override**: it quits from the
  *   global and detail-view states, but is ignored while a drain
  *   confirmation is pending (only `y`/`Y`/`n`/`N`/`Escape` are honored
- *   there) and is treated as a literal character while typing in search.
+ *   there) and is treated as a literal character while typing in search or
+ *   the queue filter.
+ * - **Queue list**: `s` cycles the sort and `/` opens the name filter, which
+ *   works like the job search (Enter keeps it, Esc clears it). Because the
+ *   root view has nothing to pop, `Escape` there clears an accepted filter.
  * - **`←`/`→` step the tabs** in the job list, alongside the `1`-`6`
  *   jumps (`6` is Schedulers, whose own keys live in `handleSchedulersInput`): the vertical arrows move within a status, the horizontal ones
  *   move between them. They stay unbound in job detail, which has no tab
@@ -59,13 +65,18 @@ export function useKeymap(
   onQuit: () => void,
 ): void {
   useInput((input, key) => {
-    if (input === 'q') {
-      onQuit();
+    if (snapshot.search.active) {
+      handleSearchInput(store, snapshot, input, key);
       return;
     }
 
-    if (snapshot.search.active) {
-      handleSearchInput(store, snapshot, input, key);
+    if (snapshot.queueFilter.active) {
+      handleQueueFilterInput(store, snapshot, input, key);
+      return;
+    }
+
+    if (input === 'q') {
+      onQuit();
       return;
     }
 
@@ -156,6 +167,29 @@ function handleSearchInput(
   }
 }
 
+function handleQueueFilterInput(
+  store: DashboardStore,
+  snapshot: DashboardSnapshot,
+  input: string,
+  key: Key,
+): void {
+  if (key.escape) {
+    store.closeQueueFilter();
+    return;
+  }
+  if (key.return) {
+    store.acceptQueueFilter();
+    return;
+  }
+  if (key.backspace || key.delete) {
+    store.setQueueFilterQuery(snapshot.queueFilter.query.slice(0, -1));
+    return;
+  }
+  if (isPrintableInput(input, key)) {
+    store.setQueueFilterQuery(snapshot.queueFilter.query + input);
+  }
+}
+
 function handleConfirmDrainInput(store: DashboardStore, input: string, key: Key): void {
   if (input === 'y' || input === 'Y') {
     void store.confirmDrain();
@@ -186,35 +220,32 @@ function handleConfirmDeleteInput(store: DashboardStore, input: string, key: Key
   }
 }
 
-function selectAdjacentQueue(
-  store: DashboardStore,
-  snapshot: DashboardSnapshot,
-  direction: 1 | -1,
-): void {
-  const { queues, selectedQueueName } = snapshot;
-  if (queues.length === 0) {
-    return;
-  }
-  const currentIndex = queues.findIndex((q) => q.name === selectedQueueName);
-  const nextIndex = Math.min(
-    Math.max((currentIndex < 0 ? 0 : currentIndex) + direction, 0),
-    queues.length - 1,
-  );
-  store.selectQueue(queues[nextIndex].name);
-}
-
 function handleQueueInput(
   store: DashboardStore,
   snapshot: DashboardSnapshot,
   input: string,
   key: Key,
 ): void {
+  if (key.escape) {
+    if (snapshot.queueFilter.query !== '') {
+      store.closeQueueFilter();
+    }
+    return;
+  }
   if (key.upArrow) {
-    selectAdjacentQueue(store, snapshot, -1);
+    store.selectPrevQueue();
     return;
   }
   if (key.downArrow) {
-    selectAdjacentQueue(store, snapshot, 1);
+    store.selectNextQueue();
+    return;
+  }
+  if (input === 's') {
+    store.cycleQueueSort();
+    return;
+  }
+  if (input === '/') {
+    store.openQueueFilter();
     return;
   }
   if (key.return) {
