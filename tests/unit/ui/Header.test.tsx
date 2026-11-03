@@ -67,6 +67,8 @@ describe('Header', () => {
     ).lastFrame();
     expect(failed).toContain('Retry');
     expect(failed).not.toContain('Promote');
+    expect(failed).toContain('<A>');
+    expect(failed).toContain('Retry all');
   });
 
   it('does not collapse when the content below it overflows the terminal', () => {

@@ -12,12 +12,14 @@ import {
   resolveRedisUrl,
   resolveRefreshIntervalMs,
   resolveRefreshTimeoutMs,
+  selectProfile,
   type UserConfig,
   userConfigPath,
 } from './config.js';
 import { doctorExitCode, formatDoctorReport, runDoctor } from './core/doctor.js';
 import { createDoctorRedisClient } from './core/redis.js';
 import { dumpQueuesJson } from './jsonOutput.js';
+import { parseRetryArgs, retryExitCode, runRetry } from './retryCommand.js';
 import { createAltScreen } from './terminal.js';
 import { App } from './ui/App.js';
 import { createApp } from './wiring.js';
@@ -43,30 +45,61 @@ function loadConfigFile(filePath: string): UserConfig | null {
   }
 }
 
+/**
+ * Picks the connection profile and resolves the URL and prefix (flag > env >
+ * profile > default). An unknown profile or an unset `${VAR}` exits with the
+ * error on stderr, before the alt screen, like a broken config file.
+ */
+function resolveConnection(
+  userConfig: UserConfig | null,
+  projectConfig: UserConfig | null,
+): { redisUrl: string; prefix: string } {
+  try {
+    const profile = selectProfile(cli.flags.profile, userConfig, projectConfig);
+    return {
+      redisUrl: resolveRedisUrl(cli.flags.redis, process.env, profile),
+      prefix: resolvePrefix(cli.flags.prefix, process.env, profile),
+    };
+  } catch (err) {
+    console.error(err instanceof ConfigError ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
 const cli = meow(
   `
 	Usage
 	  $ bull-cli [options]
 	  $ bull-cli doctor [options]
+	  $ bull-cli retry --queue <name> (--dry-run | --yes) [options]
 
 	Commands
 	  doctor             Diagnose config, connection and queue discovery (supports --output json)
+	  retry              Retry failed jobs and print a JSON summary (exits 1 if any retry failed)
 
 	Options
 	  --redis <url>      Redis connection URL (overrides REDIS_URL env var)
 	  --prefix <prefix>  BullMQ key prefix (overrides BULLMQ_PREFIX env var, default "bull")
+	  --profile <name>   Connection profile from the config file (default: "defaultProfile")
 	  --output <format>  Output mode (supported: json)
-	  --queue <name>     Queue filter for --output=json
+	  --queue <name>     Queue filter for --output=json; the queue to act on for retry
+	  --job-id <id>      retry: only this failed job
+	  --since <duration> retry: only jobs that failed within this window (30s, 15m, 2h, 7d, 1w)
+	  --dry-run          retry: report what would be retried without changing anything
+	  --yes              retry: actually retry (retry refuses to run without --dry-run or --yes)
 	  -h, --help         Show help
 	  -v, --version      Show version
 
 	Examples
 	  $ bull-cli --redis redis://localhost:6379
 	  $ bull-cli --prefix myapp
+	  $ bull-cli --profile staging
 	  $ bull-cli --output json
 	  $ bull-cli --output json --queue email
 	  $ bull-cli doctor
 	  $ bull-cli doctor --output json
+	  $ bull-cli retry --queue email --dry-run
+	  $ bull-cli retry --queue email --since 2h --yes
 `,
   {
     importMeta: import.meta,
@@ -77,11 +110,26 @@ const cli = meow(
       prefix: {
         type: 'string',
       },
+      profile: {
+        type: 'string',
+      },
       output: {
         type: 'string',
       },
       queue: {
         type: 'string',
+      },
+      jobId: {
+        type: 'string',
+      },
+      since: {
+        type: 'string',
+      },
+      dryRun: {
+        type: 'boolean',
+      },
+      yes: {
+        type: 'boolean',
       },
       help: {
         type: 'boolean',
@@ -139,6 +187,7 @@ async function runDoctorCommand(): Promise<never> {
   const report = await runDoctor({
     redisFlag: cli.flags.redis,
     prefixFlag: cli.flags.prefix,
+    profileFlag: cli.flags.profile,
     env: process.env,
     configPaths: {
       user: userConfigPath(process.env, homedir()),
@@ -157,8 +206,39 @@ async function runDoctorCommand(): Promise<never> {
   return new Promise<never>(() => {});
 }
 
+/**
+ * `bull-cli retry`: headless, no TTY needed. Parsing and the run itself live
+ * in retryCommand.ts; this only resolves the connection and exits with the
+ * report's code once the JSON has been flushed.
+ */
+async function runRetryCommand(extra: string[]): Promise<never> {
+  const parsed = parseRetryArgs(extra, cli.flags);
+  if (!parsed.ok) {
+    console.error(`Error: ${parsed.error}`);
+    process.exit(1);
+  }
+  const report = await runRetry(parsed.options, {
+    redisUrl: resolveRedisUrl(cli.flags.redis, process.env),
+    prefix: resolvePrefix(cli.flags.prefix, process.env),
+    now: () => Date.now(),
+  });
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`, () =>
+    process.exit(retryExitCode(report)),
+  );
+  // Keep the promise pending until the write callback exits the process.
+  return new Promise<never>(() => {});
+}
+
 async function main(): Promise<void> {
   const [command, ...extra] = cli.input;
+  if (command === 'retry') {
+    await runRetryCommand(extra);
+  }
+  const { jobId, since, dryRun, yes } = cli.flags;
+  if (jobId !== undefined || since !== undefined || dryRun || yes) {
+    console.error('Error: --job-id, --since, --dry-run and --yes only work with the retry command');
+    process.exit(1);
+  }
   if (command === 'doctor' && extra.length > 0) {
     console.error(`Error: unknown command "${cli.input.join(' ')}"`);
     process.exit(1);
@@ -169,11 +249,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const redisUrl = resolveRedisUrl(cli.flags.redis, process.env);
-  const prefix = resolvePrefix(cli.flags.prefix, process.env);
-
   const userConfig = loadConfigFile(userConfigPath(process.env, homedir()));
   const projectConfig = loadConfigFile(projectConfigPath(process.cwd()));
+  const { redisUrl, prefix } = resolveConnection(userConfig, projectConfig);
   const refreshIntervalMs = resolveRefreshIntervalMs(userConfig, projectConfig);
   const refreshTimeoutMs = resolveRefreshTimeoutMs(userConfig, projectConfig);
 

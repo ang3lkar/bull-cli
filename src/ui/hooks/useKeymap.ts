@@ -95,6 +95,11 @@ export function useKeymap(
       return;
     }
 
+    if (snapshot.confirmRetryAll !== null) {
+      handleConfirmRetryAllInput(store, input, key);
+      return;
+    }
+
     if (input === 'r') {
       void store.refresh();
       return;
@@ -210,6 +215,16 @@ function handleConfirmDuplicateInput(store: DashboardStore, input: string, key: 
   }
 }
 
+function handleConfirmRetryAllInput(store: DashboardStore, input: string, key: Key): void {
+  if (input === 'y' || input === 'Y') {
+    void store.confirmRetryAll();
+    return;
+  }
+  if (input === 'n' || input === 'N' || key.escape) {
+    store.cancelRetryAll();
+  }
+}
+
 function handleConfirmDeleteInput(store: DashboardStore, input: string, key: Key): void {
   if (input === 'y' || input === 'Y') {
     void store.confirmDelete();
@@ -287,7 +302,7 @@ function handleTabAndPageKeys(store: DashboardStore, input: string, key: Key): b
 }
 
 /**
- * Schedulers tab: read-only, so the job-only keys (`/`, `R`, `D`, `p`, `c`)
+ * Schedulers tab: read-only, so the job-only keys (`/`, `R`, `A`, `D`, `p`, `c`)
  * are deliberately unbound here.
  */
 function handleSchedulersInput(store: DashboardStore, input: string, key: Key): void {
@@ -347,6 +362,10 @@ function handleJobsInput(store: DashboardStore, input: string, key: Key): void {
   }
   if (input === 'R') {
     void store.retrySelected();
+    return;
+  }
+  if (input === 'A') {
+    store.requestRetryAll();
     return;
   }
   if (input === 'D') {

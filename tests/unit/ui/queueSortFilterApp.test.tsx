@@ -49,6 +49,7 @@ async function mount() {
       duplicate: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       togglePause: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       drain: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
+      retryAll: vi.fn(async () => ({ matched: 0, retried: 0, errored: 0, errors: [] })),
     },
     syncRegistry: vi.fn(async () => {}),
   };
@@ -266,5 +267,30 @@ describe('inputs cannot be opened on screens that do not show them', () => {
     expect(fresh.getSnapshot().queueFilter.active).toBe(false);
     await press(stdin, 'q');
     expect(onQuit).toHaveBeenCalledOnce();
+  });
+});
+
+describe('queue metrics row (App)', () => {
+  it('shows totals across all queues and — for throughput on the queue view', async () => {
+    const { lastFrame } = await mount();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Total 0 delayed · 0 waiting · 0 active · 15 failed · 0 done');
+    expect(frame).toContain('Throughput — done');
+    // Directly under the breadcrumb, above the table header.
+    expect(frame.indexOf('Total 0 delayed')).toBeLessThan(frame.indexOf('Delayed'));
+  });
+
+  it('keeps the totals across all queues while the list is filtered', async () => {
+    const { lastFrame, stdin } = await mount();
+    await press(stdin, '/');
+    await press(stdin, 'alp');
+    expect(rowOrder(lastFrame())).toEqual(['alpha']);
+    expect(lastFrame()).toContain('15 failed');
+  });
+
+  it('is not shown inside a queue', async () => {
+    const { lastFrame, stdin } = await mount();
+    await press(stdin, '\r');
+    expect(lastFrame()).not.toContain('Throughput');
   });
 });

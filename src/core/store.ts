@@ -1,5 +1,6 @@
 import { filterJobs } from './filter.js';
 import { filterQueues, QUEUE_SORT_ORDER, type QueueSort, sortQueues } from './queueList.js';
+import { type QueueTotals, sumCounts, type Throughput, ThroughputTracker } from './throughput.js';
 import type {
   ActionResult,
   ConnectionStatus,
@@ -8,6 +9,7 @@ import type {
   JobStatus,
   JobSummary,
   QueueInfo,
+  RetrySummary,
   SchedulerDetail,
   SchedulerPage,
   SchedulerSummary,
@@ -37,6 +39,19 @@ const DEFAULT_TOAST_DURATION_MS = 4000;
  */
 const DEFAULT_PAGE_SIZE = 10;
 
+/** Toast text for a bulk retry: the retried and errored counts, plus the first error. */
+export function retrySummaryMessage(result: RetrySummary): string {
+  const plural = (n: number) => `${n} failed job${n === 1 ? '' : 's'}`;
+  const [firstError] = result.errors;
+  if (firstError === undefined) {
+    return `Retried ${plural(result.retried)}`;
+  }
+  if (result.retried === 0) {
+    return `Could not retry failed jobs: ${firstError.message}`;
+  }
+  return `Retried ${plural(result.retried)}, ${result.errored} errored: ${firstError.message}`;
+}
+
 export type Focus = 'sidebar' | 'jobs';
 export type NavigationView =
   | { kind: 'queues' }
@@ -46,7 +61,7 @@ export type NavigationView =
 
 export type QueueCounts = Record<JobStatus, number>;
 
-export type { QueueSort };
+export type { QueueSort, QueueTotals, Throughput };
 
 /**
  * Everything the store needs from the outside world, expressed purely in
@@ -84,6 +99,8 @@ export interface StoreDeps {
     duplicate(queueName: string, jobId: string): Promise<ActionResult>;
     togglePause(queueName: string): Promise<ActionResult>;
     drain(queueName: string): Promise<ActionResult>;
+    /** Retries every failed job in the queue (Failed tab `A`). Never throws. */
+    retryAll(queueName: string): Promise<RetrySummary>;
   };
   /** Reconciles cached `Queue` instances against the discovered names. */
   syncRegistry(names: string[]): Promise<void>;
@@ -122,6 +139,14 @@ export interface DashboardSnapshot {
   queueFilter: { active: boolean; query: string };
   /** Last-known counts keyed by queue name, for the top-level queue table. */
   queueCounts: Readonly<Record<string, QueueCounts>>;
+  /** `queueCounts` summed over every discovered queue, ignoring the name filter. */
+  queueTotals: QueueTotals;
+  /**
+   * Completed and failed jobs per minute across all queues, from how the
+   * counts grew between refreshes (see `ThroughputTracker`). `null` until two
+   * refreshes have landed.
+   */
+  throughput: Throughput | null;
   navigationStack: readonly NavigationView[];
   currentView: NavigationView;
   selectedQueueName: string | null;
@@ -191,6 +216,8 @@ export interface DashboardSnapshot {
   confirmDuplicateJobId: string | null;
   /** Job id awaiting delete confirmation, captured with its queue at request time. */
   confirmDeleteJobId: string | null;
+  /** Pending "retry all failed jobs" confirmation, with the failed count shown in the prompt. */
+  confirmRetryAll: { queueName: string; count: number } | null;
   focus: Focus;
   toasts: Toast[];
   lastUpdatedAt: number | null;
@@ -248,6 +275,7 @@ export class DashboardStore {
   private connection: ConnectionStatus = { state: 'connecting' };
   private queues: QueueInfo[] = [];
   private readonly queueCountsByName = new Map<string, QueueCounts>();
+  private readonly throughput = new ThroughputTracker();
   private navigationStack: NavigationView[] = [{ kind: 'queues' }];
   private selectedQueueName: string | null = null;
   private tab: Tab = 'active';
@@ -274,6 +302,8 @@ export class DashboardStore {
   private pendingDelete: { queueName: string; jobId: string } | null = null;
   /** Pending duplicate confirmation, captured at request time; see `requestDuplicate`. */
   private pendingDuplicate: { queueName: string; jobId: string } | null = null;
+  /** Pending bulk retry, captured at request time; see `requestRetryAll`. */
+  private pendingRetryAll: { queueName: string; count: number } | null = null;
   private focus: Focus = 'sidebar';
   private toasts: Toast[] = [];
   private lastUpdatedAt: number | null = null;
@@ -345,6 +375,11 @@ export class DashboardStore {
       queueSort: this.queueSort,
       queueFilter: { active: this.queueFilterActive, query: this.queueFilterQuery },
       queueCounts,
+      queueTotals: sumCounts(
+        this.queues.map((q) => q.name),
+        this.queueCountsByName,
+      ),
+      throughput: this.throughput.rate(),
       navigationStack: this.navigationStack,
       currentView: this.navigationStack[this.navigationStack.length - 1],
       selectedQueueName: this.selectedQueueName,
@@ -374,6 +409,7 @@ export class DashboardStore {
       confirmDrain: this.confirmDrainFlag,
       confirmDuplicateJobId: this.pendingDuplicate?.jobId ?? null,
       confirmDeleteJobId: this.pendingDelete?.jobId ?? null,
+      confirmRetryAll: this.pendingRetryAll,
       focus: this.focus,
       toasts: this.toasts,
       lastUpdatedAt: this.lastUpdatedAt,
@@ -679,6 +715,7 @@ export class DashboardStore {
 
     this.connection = { state: 'ready' };
     this.lastUpdatedAt = this.now();
+    this.throughput.record(this.lastUpdatedAt, names, this.queueCountsByName);
     // Deliberately here rather than in each branch above: every non-
     // superseded outcome — a landed page, no queue to load, or a failed
     // fetch — reaches this line, and a superseded cycle returns before it
@@ -1508,6 +1545,55 @@ export class DashboardStore {
       return;
     }
     this.pushToast(result.info ?? `Job ${jobId} duplicated`);
+    await this.refresh();
+  }
+
+  // --- bulk retry flow --------------------------------------------------
+
+  /**
+   * Failed tab `A`: asks for confirmation before retrying every failed job
+   * in the selected queue. The queue and the count shown in the prompt are
+   * captured now, like `requestDuplicate`, so a poll that lands while the
+   * prompt is up can't change what the user is agreeing to. With no failed
+   * jobs there is nothing to confirm, so it just says so.
+   */
+  requestRetryAll(): void {
+    if (
+      this.currentView().kind !== 'jobs' ||
+      this.tab !== 'failed' ||
+      this.selectedQueueName === null ||
+      this.pendingRetryAll !== null
+    ) {
+      return;
+    }
+    const count = this.queueCountsByName.get(this.selectedQueueName)?.failed ?? 0;
+    if (count === 0) {
+      this.pushToast('No failed jobs to retry');
+      return;
+    }
+    this.pendingRetryAll = { queueName: this.selectedQueueName, count };
+    this.emit();
+  }
+
+  cancelRetryAll(): void {
+    if (this.pendingRetryAll === null) {
+      return;
+    }
+    this.pendingRetryAll = null;
+    this.emit();
+  }
+
+  /** Confirms a pending bulk retry: toasts the retried/errored counts, then refreshes. */
+  async confirmRetryAll(): Promise<void> {
+    if (this.pendingRetryAll === null) {
+      return;
+    }
+    const { queueName } = this.pendingRetryAll;
+    this.pendingRetryAll = null;
+    this.emit();
+
+    const result = await this.deps.actions.retryAll(queueName);
+    this.pushToast(retrySummaryMessage(result));
     await this.refresh();
   }
 

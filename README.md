@@ -62,12 +62,18 @@ by scanning for `bull:*:meta` keys — no configuration file is required to get 
 ```
 bull-cli [options]
 bull-cli doctor [options]   # diagnose config, connection and queue discovery
+bull-cli retry --queue <name> (--dry-run | --yes) [--job-id <id> | --since <duration>]
 
 Options:
   --redis <url>      Redis connection URL (overrides REDIS_URL env var)
   --prefix <prefix>  BullMQ key prefix (overrides BULLMQ_PREFIX env var)
+  --profile <name>   Connection profile from the config file (default: "defaultProfile")
   --output <format>  Output mode (supported: json)
-  --queue <name>     Queue filter for --output=json
+  --queue <name>     Queue filter for --output=json; the queue to act on for retry
+  --job-id <id>      retry: only this failed job
+  --since <duration> retry: only jobs that failed within this window (30s, 15m, 2h, 7d, 1w)
+  --dry-run          retry: report what would be retried without changing anything
+  --yes              retry: actually retry
   -h, --help         Show help
   -v, --version      Show version
 ```
@@ -89,7 +95,8 @@ Connection precedence (highest wins):
 
 1. `--redis <url>` flag
 2. `REDIS_URL` environment variable
-3. `redis://localhost:6379` (default)
+3. the selected [connection profile](#connection-profiles)'s `redisUrl`
+4. `redis://localhost:6379` (default)
 
 Credentials, if any, are embedded in the URL itself:
 
@@ -102,7 +109,8 @@ BullMQ prefix precedence (highest wins):
 
 1. `--prefix <prefix>` flag
 2. `BULLMQ_PREFIX` environment variable
-3. `'bull'` (bullmq's own default)
+3. the selected [connection profile](#connection-profiles)'s `prefix`
+4. `'bull'` (bullmq's own default)
 
 Examples:
 
@@ -111,6 +119,7 @@ bull-cli
 bull-cli --redis redis://localhost:6379
 REDIS_URL=redis://:secret@redis.internal:6379 bull-cli
 bull-cli --prefix myapp
+bull-cli --profile staging
 bull-cli --output=json
 bull-cli --output=json --queue=email
 ```
@@ -146,6 +155,42 @@ Notes:
 - `--queue` requires `--output=json`.
 - Unknown queue names return an error and exit with status `1`.
 
+### Retrying failed jobs from a script
+
+`bull-cli retry` moves failed jobs back to waiting without opening the dashboard. It needs no TTY,
+so it works in CI, cron jobs and incident runbooks:
+
+```sh
+bull-cli retry --queue email --dry-run              # how many would be retried?
+bull-cli retry --queue email --yes                  # retry every failed job
+bull-cli retry --queue email --since 2h --yes       # only jobs that failed in the last 2 hours
+bull-cli retry --queue email --job-id 42 --yes      # just one job
+```
+
+It always prints a JSON summary:
+
+```json
+{
+  "queue": "email",
+  "dryRun": false,
+  "filter": { "failedSince": "2026-11-02T10:00:00.000Z" },
+  "matched": 3,
+  "retried": 2,
+  "errored": 1,
+  "errors": [{ "jobId": "17", "message": "Job 17 not found" }]
+}
+```
+
+Notes:
+
+- It changes data, so it refuses to run unless you pass `--dry-run` or `--yes` (exactly one).
+- `--since` takes a number and a unit: `s`, `m`, `h`, `d` or `w`. It can't be combined with
+  `--job-id`.
+- `errored` counts matched jobs whose retry failed. Problems that aren't about a matched job (no
+  connection, a missing queue, a `--job-id` that isn't failed) appear only in `errors`.
+- The exit status is `1` if `errors` is non-empty: a retry failed, the queue doesn't exist, or
+  Redis can't be reached. Otherwise it's `0`.
+
 It runs fullscreen, in the terminal's alternate screen buffer (like vim or htop); quitting —
 `q`, `Ctrl+C`, or a `kill` — restores the shell exactly as it was, with no dashboard frames left
 in scrollback.
@@ -154,7 +199,8 @@ in scrollback.
 
 Everything works with zero configuration. An optional JSONC (JSON with `//` and `/* */` comments,
 and trailing commas allowed) config file lets you override defaults that aren't worth a CLI flag —
-currently the dashboard's auto-refresh interval and its per-refresh timeout.
+the dashboard's auto-refresh interval and its per-refresh timeout, plus named
+[connection profiles](#connection-profiles).
 
 Two locations are checked, both optional; if a project file is present, it's merged over the user
 file key-by-key:
@@ -183,6 +229,36 @@ file key-by-key:
 }
 ```
 
+### Connection profiles
+
+Named connections save retyping the URL and prefix when you switch between Redis instances. Add
+them to either config file and pick one with `--profile <name>`, or set `defaultProfile` to use one
+when no flag is given:
+
+```jsonc
+// ~/.config/bull-cli/config.json
+{
+  "defaultProfile": "local",
+  "profiles": {
+    "local": { "redisUrl": "redis://localhost:6379" },
+    "staging": { "redisUrl": "redis://staging.internal:6379", "prefix": "myapp" },
+    // Read from the environment, so the password never lands in the file.
+    "prod": { "redisUrl": "${PROD_REDIS_URL}", "prefix": "myapp" },
+  },
+}
+```
+
+- Each profile needs a `redisUrl`; `prefix` is optional and falls back to `bull`.
+- A value written exactly as `${VAR}` is read from that environment variable when the profile is
+  used. An unset or empty variable is an error. Only the whole value is substituted:
+  `redis://${HOST}:6379` is used as written.
+- A profile only fills in what the flags and environment leave open: `--redis` / `REDIS_URL` and
+  `--prefix` / `BULLMQ_PREFIX` still win over it. `bull-cli doctor` shows where each value came
+  from, e.g. `(profile "prod")` or `(REDIS_URL)`.
+- When both files define profiles, they're combined. A project profile replaces a user profile of
+  the same name entirely, and the project file's `defaultProfile` wins.
+- An unknown profile name is an error that lists the profiles you do have.
+
 A present-but-invalid config file (bad JSON, an unrecognized key, or an out-of-range value) is a
 hard error — `bull-cli` prints the problem to stderr and exits rather than silently ignoring it.
 A missing file is perfectly fine and just falls back to defaults.
@@ -191,7 +267,12 @@ A missing file is perfectly fine and just falls back to defaults.
 
 - **Queue list** — a full-width list with the queue name and lifecycle counters in order:
   delayed, waiting, active, failed, completed. Paused queues carry a `(paused)` marker. The
-  heading shows the current sort, and `/` filters the list by name.
+  heading shows the current sort, and `/` filters the list by name. A metrics row above the list
+  totals each counter across all queues (the name filter doesn't change it) and shows throughput:
+  completed and failed jobs per minute, averaged over the last minute of refreshes. Throughput
+  reads `—` until the second refresh. It is worked out from how the counts grow, so a queue whose
+  jobs use `removeOnComplete` / `removeOnFail` adds nothing to it, and a `clean` counts as zero
+  rather than a negative rate.
 - **Job list** — a full-width `ID`, `Name`, `State`, `Attempts`, `CreatedAt` table. The name
   column expands to fill the terminal. The status header provides counts and selection feedback.
   A page holds as many rows as fit the terminal's height, so `Page N of M` is accurate at any
@@ -273,6 +354,7 @@ While the filter input is open, every key (including `q`, `s`, `p`, `Shift+D`) t
 | `Enter` | Open job detail |
 | `/` | Open search bar (filters by job ID or name) |
 | `R` | Retry job (failed jobs only; shown only for Failed) |
+| `Shift+A` | Retry all failed jobs in the queue (Failed tab only; confirmation prompt shows the count) |
 | `Shift+D` | Delete job (with confirmation prompt) |
 | `p` | Promote a delayed job to waiting (shown only for Delayed) |
 | `c` | Duplicate job — clones its payload as a new delayed job (with confirmation prompt) |
@@ -287,7 +369,7 @@ While the filter input is open, every key (including `q`, `s`, `p`, `Shift+D`) t
 | `Enter` | Open scheduler detail |
 | `Esc` / `h` | Return to the queue list |
 
-The job-only keys (`/`, `R`, `Shift+D`, `p`, `c`) do nothing here.
+The job-only keys (`/`, `R`, `Shift+A`, `Shift+D`, `p`, `c`) do nothing here.
 
 ### Scheduler detail
 

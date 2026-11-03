@@ -6,6 +6,7 @@ import {
   drainQueue,
   duplicateJob,
   promoteJob,
+  retryFailedJobs,
   retryJob,
   togglePauseQueue,
 } from './core/actions.js';
@@ -15,7 +16,7 @@ import { createQueueRegistry, type QueueRegistry } from './core/queueRegistry.js
 import { createRedisClient } from './core/redis.js';
 import { fetchSchedulerCount, fetchSchedulerPage, getSchedulerDetail } from './core/schedulers.js';
 import { DashboardStore, type StoreDeps } from './core/store.js';
-import type { ActionResult } from './core/types.js';
+import type { ActionResult, RetrySummary } from './core/types.js';
 
 export interface WiredApp {
   store: DashboardStore;
@@ -85,6 +86,18 @@ async function safeAction(
   return run(queue);
 }
 
+/** `safeAction` for the bulk retry, whose result carries counts rather than an `ActionResult`. */
+async function safeRetryAll(registry: QueueRegistry, queueName: string): Promise<RetrySummary> {
+  let queue: Queue;
+  try {
+    queue = registry.getQueue(queueName);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { matched: 0, retried: 0, errored: 0, errors: [{ jobId: null, message }] };
+  }
+  return retryFailedJobs(queue);
+}
+
 /**
  * Wires the framework-agnostic `DashboardStore` to real `ioredis`/`bullmq`
  * adapters (`discovery.ts`, `jobs.ts`, `actions.ts`, `queueRegistry.ts`).
@@ -132,6 +145,7 @@ export function createApp(
       togglePause: (queueName) =>
         safeAction(registry, queueName, (queue) => togglePauseQueue(queue)),
       drain: (queueName) => safeAction(registry, queueName, (queue) => drainQueue(queue)),
+      retryAll: (queueName) => safeRetryAll(registry, queueName),
     },
     syncRegistry: (names) => registry.sync(names),
   };

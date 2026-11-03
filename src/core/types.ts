@@ -75,6 +75,27 @@ export interface Toast {
  */
 export type ActionResult = { ok: true; info?: string } | { ok: false; message: string };
 
+/** One job (or the whole batch, `jobId: null`) that could not be retried. */
+export interface RetryError {
+  jobId: string | null;
+  message: string;
+}
+
+/**
+ * Outcome of a bulk retry. Like `ActionResult` it is never thrown: every
+ * failure ends up in `errors`. `matched` is how many failed jobs the filter
+ * selected, and `retried + errored` never exceeds it: `errored` counts only
+ * matched jobs whose retry failed. A failure that isn't about a matched job
+ * (no connection, missing queue, a `--job-id` that isn't failed) is in
+ * `errors` alone. On a dry run `retried` is always 0.
+ */
+export interface RetrySummary {
+  matched: number;
+  retried: number;
+  errored: number;
+  errors: RetryError[];
+}
+
 /** Row shown in the job scheduler list table. */
 export interface SchedulerSummary {
   key: string;
