@@ -73,11 +73,11 @@ interface FakeState {
   jobDetails: Record<string, JobDetail | null>;
 }
 
-function paginate(items: SchedulerSummary[], page: number): SchedulerPage {
-  const pageCount = Math.max(1, Math.ceil(items.length / 10));
+function paginate(items: SchedulerSummary[], page: number, size = 10): SchedulerPage {
+  const pageCount = Math.max(1, Math.ceil(items.length / size));
   const clamped = Math.min(Math.max(page, 0), pageCount - 1);
   return {
-    schedulers: items.slice(clamped * 10, clamped * 10 + 10),
+    schedulers: items.slice(clamped * size, clamped * size + size),
     totalCount: items.length,
     page: clamped,
     pageCount,
@@ -98,7 +98,9 @@ function createDeps(state: FakeState): StoreDeps {
       }),
     ),
     getJobDetail: vi.fn(async (_q: string, id: string) => state.jobDetails[id] ?? null),
-    fetchSchedulerPage: vi.fn(async (_q: string, page: number) => paginate(state.schedulers, page)),
+    fetchSchedulerPage: vi.fn(async (_q: string, page: number, size?: number) =>
+      paginate(state.schedulers, page, size),
+    ),
     fetchSchedulerCount: vi.fn(async () => state.schedulers.length),
     getSchedulerDetail: vi.fn(
       async (_q: string, key: string) => state.schedulerDetails[key] ?? null,
@@ -226,7 +228,7 @@ describe('Schedulers tab: switching', () => {
     await flush();
 
     expect(deps.fetchJobPage).not.toHaveBeenCalled();
-    expect(deps.fetchSchedulerPage).toHaveBeenCalledWith('q', 0);
+    expect(deps.fetchSchedulerPage).toHaveBeenCalledWith('q', 0, 10);
     const snap = store.getSnapshot();
     expect(snap.schedulerPage?.schedulers.map((s) => s.key)).toEqual(['a', 'b']);
     expect(snap.selectedSchedulerKey).toBe('a');
@@ -330,7 +332,7 @@ describe('Schedulers tab: paging and selection', () => {
 
     store.nextPage();
     await flush();
-    expect(deps.fetchSchedulerPage).toHaveBeenLastCalledWith('q', 1);
+    expect(deps.fetchSchedulerPage).toHaveBeenLastCalledWith('q', 1, 10);
     expect(store.getSnapshot().page).toBe(1);
     expect(store.getSnapshot().selectedSchedulerKey).toBe('s10');
 
@@ -889,5 +891,27 @@ describe('Detail loading races', () => {
 
     expect(ctx.store.getSnapshot().currentView.kind).toBe('jobs');
     expect(ctx.store.getSnapshot().schedulerDetail).toBeNull();
+  });
+});
+
+describe('Schedulers tab: page size', () => {
+  it('pages schedulers by the store page size and keeps the selected one in view', async () => {
+    const schedulers = Array.from({ length: 12 }, (_, i) => makeScheduler(`s${i}`));
+    const { deps, store } = await setup(emptyState({ schedulers }));
+    await openSchedulersTab(store);
+    for (let i = 0; i < 6; i++) store.selectNextScheduler(); // s6
+    expect(store.getSnapshot().selectedSchedulerKey).toBe('s6');
+
+    store.setPageSize(4);
+    await flush();
+
+    expect(deps.fetchSchedulerPage).toHaveBeenLastCalledWith('q', 1, 4);
+    expect(store.getSnapshot().schedulerPage?.schedulers.map((s) => s.key)).toEqual([
+      's4',
+      's5',
+      's6',
+      's7',
+    ]);
+    expect(store.getSnapshot().selectedSchedulerKey).toBe('s6');
   });
 });

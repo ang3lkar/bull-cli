@@ -275,6 +275,9 @@ A missing file is perfectly fine and just falls back to defaults.
   rather than a negative rate.
 - **Job list** — a full-width `ID`, `Name`, `State`, `Attempts`, `CreatedAt` table. The name
   column expands to fill the terminal. The status header provides counts and selection feedback.
+  A page holds as many rows as fit the terminal's height, so `Page N of M` is accurate at any
+  size. Resizing re-pages the list and keeps the selected job on screen. In a short terminal
+  (under 24 rows) the blank spacer lines collapse to make room.
 - **Schedulers** — the sixth tab of the job list: the queue's BullMQ job schedulers (repeatable
   jobs), soonest next run first, with `Key`, `Name`, `Schedule` (cron pattern or `every 5m`),
   `TZ`, `Next run` and `Iterations` columns. Read-only.
