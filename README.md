@@ -165,7 +165,11 @@ bull-cli retry --queue email --dry-run              # how many would be retried?
 bull-cli retry --queue email --yes                  # retry every failed job
 bull-cli retry --queue email --since 2h --yes       # only jobs that failed in the last 2 hours
 bull-cli retry --queue email --job-id 42 --yes      # just one job
+bull-cli retry --queue email --profile prod --dry-run   # against a connection profile
 ```
+
+It connects the same way the dashboard does: `--redis` / `--prefix`, then `REDIS_URL` /
+`BULLMQ_PREFIX`, then `--profile` or the config file's `defaultProfile`.
 
 It always prints a JSON summary:
 
