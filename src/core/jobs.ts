@@ -60,14 +60,15 @@ export async function fetchJobPage(
   queue: Queue,
   status: JobStatus,
   page: number,
+  pageSize: number = PAGE_SIZE,
 ): Promise<JobPage> {
   const counts = await fetchQueueCounts(queue);
   const totalCount = counts[status];
-  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
   const currentPage = clampPage(page, pageCount);
 
-  const start = currentPage * PAGE_SIZE;
-  const end = start + PAGE_SIZE - 1;
+  const start = currentPage * pageSize;
+  const end = start + pageSize - 1;
 
   const jobs = await queue.getJobs([status], start, end, false);
 
