@@ -210,6 +210,11 @@ async function runDoctorCommand(): Promise<never> {
  * `bull-cli retry`: headless, no TTY needed. Parsing and the run itself live
  * in retryCommand.ts; this only resolves the connection and exits with the
  * report's code once the JSON has been flushed.
+ *
+ * The connection comes from the same `resolveConnection` as the dashboard,
+ * so `--profile` and the config files' `defaultProfile` pick the Redis it
+ * acts on. Without that, a retry run next to a dashboard on a profile would
+ * silently go to localhost instead.
  */
 async function runRetryCommand(extra: string[]): Promise<never> {
   const parsed = parseRetryArgs(extra, cli.flags);
@@ -217,9 +222,12 @@ async function runRetryCommand(extra: string[]): Promise<never> {
     console.error(`Error: ${parsed.error}`);
     process.exit(1);
   }
+  const userConfig = loadConfigFile(userConfigPath(process.env, homedir()));
+  const projectConfig = loadConfigFile(projectConfigPath(process.cwd()));
+  const { redisUrl, prefix } = resolveConnection(userConfig, projectConfig);
   const report = await runRetry(parsed.options, {
-    redisUrl: resolveRedisUrl(cli.flags.redis, process.env),
-    prefix: resolvePrefix(cli.flags.prefix, process.env),
+    redisUrl,
+    prefix,
     now: () => Date.now(),
   });
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`, () =>
