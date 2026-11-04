@@ -82,44 +82,69 @@
   </div>
   <p class="muted" style="margin-top:10px">Requires Node.js &gt;= 20 and a reachable Redis with one or more BullMQ queues.</p>
 
-<pre class="screen" aria-label="Screenshot of the bull-cli job list view"><code><span class="y">bull-cli v0.1.0</span>
-<span class="y">[Esc/h]</span> Back    <span class="y">[r]</span> Refresh    <span class="y">[q]</span> Quit
-<span class="cy">[↑/↓]</span> Move      <span class="cy">[1-5]</span> Status    <span class="cy">[Enter]</span> Detail    <span class="cy">[/]</span> Filter
+<pre class="screen" aria-label="Screenshot of the bull-cli job list on the Failed tab"><code><b>bull-cli</b> <span class="c">v0.2.0</span>
+<span class="c">──────────────────────────────────────────────────────────────────</span>
+<span class="y">&lt;Esc/h&gt; </span><span class="c">Back</span>           <span class="cy">&lt;↑/↓&gt;   </span><span class="c">Move</span>        <span class="cy">&lt;/&gt;     </span><span class="c">Filter</span>
+<span class="y">&lt;H&gt;     </span><span class="c">Home</span>           <span class="cy">&lt;←/→&gt;   </span><span class="c">Status</span>      <span class="cy">&lt;R&gt;     </span><span class="c">Retry</span>
+<span class="y">&lt;r&gt;     </span><span class="c">Refresh</span>        <span class="cy">&lt;1-6&gt;   </span><span class="c">Jump</span>        <span class="cy">&lt;D&gt;     </span><span class="c">Delete</span>
+<span class="y">&lt;q&gt;     </span><span class="c">Quit</span>           <span class="cy">&lt;b/n&gt;   </span><span class="c">Page</span>        <span class="cy">&lt;A&gt;     </span><span class="c">Retry all</span>
+                       <span class="cy">&lt;Enter&gt; </span><span class="c">Detail</span>      <span class="cy">&lt;c&gt;     </span><span class="c">Duplicate</span>
 
 <span class="c">Queues &gt;</span> emailQ
-<span class="y">[Delayed](0)</span> | Waiting (12) | Active (2) | <span class="r">Failed (1)</span> | <span class="g">Completed (4)</span>
+Delayed (0) | Waiting (12) | Active (2) | <span class="r">[Failed](3)</span> | Completed (4) | Schedulers (1)
 
    <span class="c">ID    Name                State     Attempts  CreatedAt</span>
-<span class="g">❯</span>  12    send-email          waiting          0  2026-07-26 10:41
-   13    send-email          waiting          0  2026-07-26 10:41
-   14    welcome-digest      waiting          0  2026-07-26 10:42
+<span class="g">❯</span>  41    send-email          failed           3  2026-11-03 09:12
+   43    send-email          failed           3  2026-11-03 09:14
+   47    welcome-digest      failed           1  2026-11-03 09:20
 
-                                                    <span class="c">Page 1 of 2</span>
-<span class="c">redis://localhost:6379</span></code></pre>
+                                                    <span class="c">Page 1 of 1</span>
+<span class="c">redis://localhost:6379</span>                                 <span class="c">prefix</span> bull</code></pre>
 
   <h2>features</h2>
   <ul>
     <li>Zero config. It finds queues by running <code>SCAN</code> for <code>bull:*:meta</code> keys.</li>
-    <li>Delayed, waiting, active, failed and completed jobs, with pagination and search.</li>
-    <li>Job detail: data, return value, stacktrace and options. Copy the data JSON to the clipboard.</li>
-    <li>Retry, delete, promote and duplicate jobs. Pause, resume and drain queues.</li>
+    <li>A queue list you can sort and filter, with totals across every queue and completed/failed jobs per minute.</li>
+    <li>Delayed, waiting, active, failed and completed jobs, with search. Pages fit the terminal's height.</li>
+    <li>Job schedulers (repeatable jobs): their schedule, next run and job template.</li>
+    <li>Job detail: failure reason, data, return value, stack trace and options. Copy the data JSON to the clipboard.</li>
+    <li>Retry one failed job or all of them, delete, promote and duplicate jobs. Pause, resume and drain queues.</li>
+    <li>Named connection profiles for switching between Redis instances.</li>
+    <li><code>bull-cli doctor</code> explains an empty dashboard: wrong prefix, wrong DB, no connection.</li>
+    <li><code>--output=json</code> and <code>bull-cli retry</code> for scripts, cron jobs and CI.</li>
     <li>Refreshes every 3s. Runs in the alternate screen buffer, so your scrollback stays clean.</li>
-    <li><code>--output=json</code> for scripts and CI.</li>
   </ul>
 
   <h2 id="usage">usage</h2>
 <pre><code>bull-cli [options]
+bull-cli doctor [options]
+bull-cli retry --queue &lt;name&gt; (--dry-run | --yes) [--job-id &lt;id&gt; | --since &lt;duration&gt;]
 
-  --redis &lt;url&gt;      Redis URL           <span class="c"># &gt; REDIS_URL &gt; redis://localhost:6379</span>
-  --prefix &lt;prefix&gt;  BullMQ key prefix   <span class="c"># &gt; BULLMQ_PREFIX &gt; bull</span>
-  --output &lt;format&gt;  Output mode         <span class="c"># json</span>
-  --queue &lt;name&gt;     Queue filter for --output=json
+  --redis &lt;url&gt;        Redis URL           <span class="c"># &gt; REDIS_URL &gt; profile &gt; redis://localhost:6379</span>
+  --prefix &lt;prefix&gt;    BullMQ key prefix   <span class="c"># &gt; BULLMQ_PREFIX &gt; profile &gt; bull</span>
+  --profile &lt;name&gt;     Connection profile from the config file
+  --output &lt;format&gt;    Output mode         <span class="c"># json</span>
+  --queue &lt;name&gt;       Queue filter for --output=json; the queue to act on for retry
+  --job-id &lt;id&gt;        retry: only this failed job
+  --since &lt;duration&gt;   retry: only jobs that failed within this window (30s, 15m, 2h, 7d, 1w)
+  --dry-run            retry: report what would be retried, change nothing
+  --yes                retry: actually retry
   -h, --help
   -v, --version</code></pre>
 <pre><code><span class="c">$</span> bull-cli
 <span class="c">$</span> bull-cli --redis redis://:secret@redis.internal:6379
 <span class="c">$</span> bull-cli --prefix myapp
+<span class="c">$</span> bull-cli --profile staging
+<span class="c">$</span> bull-cli doctor
 <span class="c">$</span> bull-cli --output=json --queue=email</code></pre>
+
+  <h3>retry from a script</h3>
+  <p><code>bull-cli retry</code> moves failed jobs back to waiting without opening the dashboard. It needs no TTY, refuses to run without <code>--dry-run</code> or <code>--yes</code>, prints a JSON summary, and exits 1 if anything failed.</p>
+<pre><code><span class="c">$</span> bull-cli retry --queue email --dry-run           <span class="c"># how many would be retried?</span>
+<span class="c">$</span> bull-cli retry --queue email --yes               <span class="c"># every failed job</span>
+<span class="c">$</span> bull-cli retry --queue email --since 2h --yes    <span class="c"># failed in the last 2 hours</span>
+<span class="c">$</span> bull-cli retry --queue email --job-id 42 --yes   <span class="c"># just one job</span></code></pre>
+<pre><code>{ "queue": "email", "dryRun": false, "filter": {}, "matched": 3, "retried": 3, "errored": 0, "errors": [] }</code></pre>
 
   <h2 id="keys">keys</h2>
   <h3>global</h3>
@@ -135,18 +160,25 @@
     <tr><td>Enter</td><td>open queue</td></tr>
     <tr><td>p</td><td>pause / resume</td></tr>
     <tr><td>Shift+D</td><td>drain (asks to confirm)</td></tr>
+    <tr><td>s</td><td>cycle sort: name, total, failed, waiting, active, delayed</td></tr>
+    <tr><td>/</td><td>filter queues by name</td></tr>
   </table>
   <h3>job list</h3>
   <table>
-    <tr><td>← / →</td><td>previous / next status</td></tr>
-    <tr><td>1–5</td><td>delayed, waiting, active, failed, completed</td></tr>
+    <tr><td>← / →</td><td>previous / next tab</td></tr>
+    <tr><td>1–6</td><td>delayed, waiting, active, failed, completed, schedulers</td></tr>
     <tr><td>b / n</td><td>previous / next page</td></tr>
     <tr><td>/</td><td>search by ID or name</td></tr>
     <tr><td>Enter</td><td>job detail</td></tr>
     <tr><td>R</td><td>retry (failed only)</td></tr>
+    <tr><td>Shift+A</td><td>retry all failed jobs (asks to confirm)</td></tr>
     <tr><td>p</td><td>promote (delayed only)</td></tr>
     <tr><td>c</td><td>duplicate as a new delayed job</td></tr>
     <tr><td>Shift+D</td><td>delete (asks to confirm)</td></tr>
+  </table>
+  <h3>schedulers</h3>
+  <table>
+    <tr><td>Enter</td><td>scheduler detail; Enter again opens its next job</td></tr>
   </table>
   <h3>job detail</h3>
   <table>
@@ -162,7 +194,17 @@
   "refreshIntervalMs": 3000,
   <span class="c">// per-refresh timeout, ms (&gt;= 250); raise for remote/tunnelled Redis</span>
   "refreshTimeoutMs": 5000,
+
+  <span class="c">// pick one with --profile, or set a default</span>
+  "defaultProfile": "local",
+  "profiles": {
+    "local": { "redisUrl": "redis://localhost:6379" },
+    "staging": { "redisUrl": "redis://staging.internal:6379", "prefix": "myapp" },
+    <span class="c">// ${VAR} is read from the environment, so passwords stay out of the file</span>
+    "prod": { "redisUrl": "${PROD_REDIS_URL}", "prefix": "myapp" },
+  },
 }</code></pre>
+  <p><code>--redis</code>, <code>--prefix</code>, <code>REDIS_URL</code> and <code>BULLMQ_PREFIX</code> still win over a profile. <code>bull-cli doctor</code> shows where each value came from.</p>
 
   <h2>hack on it</h2>
 <pre><code><span class="c">$</span> git clone https://github.com/ang3lkar/bull-cli.git &amp;&amp; cd bull-cli
