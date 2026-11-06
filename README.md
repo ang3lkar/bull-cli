@@ -63,17 +63,19 @@ by scanning for `bull:*:meta` keys — no configuration file is required to get 
 bull-cli [options]
 bull-cli doctor [options]   # diagnose config, connection and queue discovery
 bull-cli retry --queue <name> (--dry-run | --yes) [--job-id <id> | --since <duration>]
+bull-cli remove --queue <name> (--dry-run | --yes) [--force]
 
 Options:
   --redis <url>      Redis connection URL (overrides REDIS_URL env var)
   --prefix <prefix>  BullMQ key prefix (overrides BULLMQ_PREFIX env var)
   --profile <name>   Connection profile from the config file (default: "defaultProfile")
   --output <format>  Output mode (supported: json)
-  --queue <name>     Queue filter for --output=json; the queue to act on for retry
+  --queue <name>     Queue filter for --output=json; the queue to act on for retry/remove
   --job-id <id>      retry: only this failed job
   --since <duration> retry: only jobs that failed within this window (30s, 15m, 2h, 7d, 1w)
-  --dry-run          retry: report what would be retried without changing anything
-  --yes              retry: actually retry
+  --dry-run          retry/remove: report what would change without changing anything
+  --yes              retry/remove: actually do it
+  --force            remove: remove even while jobs are active
   -h, --help         Show help
   -v, --version      Show version
 ```
@@ -194,6 +196,41 @@ Notes:
   connection, a missing queue, a `--job-id` that isn't failed) appear only in `errors`.
 - The exit status is `1` if `errors` is non-empty: a retry failed, the queue doesn't exist, or
   Redis can't be reached. Otherwise it's `0`.
+
+### Removing a queue
+
+`bull-cli remove` deletes a queue entirely: every job in every state, its job schedulers, and the
+queue itself, so it disappears from the dashboard. It can't be undone. Like `retry`, it needs no
+TTY and connects the same way the dashboard does.
+
+```sh
+bull-cli remove --queue old-email --dry-run         # what's in it?
+bull-cli remove --queue old-email --yes             # remove it
+bull-cli remove --queue old-email --yes --force     # remove it even with jobs running
+```
+
+It prints a JSON summary:
+
+```json
+{
+  "queue": "old-email",
+  "dryRun": false,
+  "force": false,
+  "counts": { "active": 0, "waiting": 12, "completed": 340, "failed": 3, "delayed": 0 },
+  "total": 355,
+  "removed": true,
+  "error": null
+}
+```
+
+Notes:
+
+- It refuses to run unless you pass `--dry-run` or `--yes` (exactly one).
+- Without `--force` it won't remove a queue that has active jobs, and leaves it as it was. With
+  `--force`, workers still running those jobs fail to complete them.
+- A worker or producer that is still running for that queue name will create it again.
+- The exit status is `1` if `error` is set: the queue has active jobs, doesn't exist, or Redis can't
+  be reached. Otherwise it's `0`.
 
 It runs fullscreen, in the terminal's alternate screen buffer (like vim or htop); quitting —
 `q`, `Ctrl+C`, or a `kill` — restores the shell exactly as it was, with no dashboard frames left
@@ -335,11 +372,12 @@ zero jobs, and a search that matches nothing names the query instead of the stat
 | `Enter` | Open selected queue's jobs |
 | `p` | Toggle pause/resume queue |
 | `Shift+D` | Drain queue (with confirmation prompt) |
+| `Shift+X` | Remove queue and all its jobs (with confirmation prompt; refused while jobs are active) |
 | `s` | Cycle the sort: name, total, failed, waiting, active, delayed (counts sort highest first) |
 | `/` | Filter queues by name (`Enter` keeps the filter, `Esc` clears it) |
 | `Esc` | Clear an accepted filter |
 
-While the filter input is open, every key (including `q`, `s`, `p`, `Shift+D`) types a character;
+While the filter input is open, every key (including `q`, `s`, `p`, `Shift+D`, `Shift+X`) types a character;
 `Ctrl+C` still quits. The filter stays applied when you enter a queue and come back.
 
 ### Job list

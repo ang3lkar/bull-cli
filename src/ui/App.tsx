@@ -171,6 +171,8 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
           <ConfirmPrompt
             message={`Retry all ${snapshot.confirmRetryAll.count} failed job${snapshot.confirmRetryAll.count === 1 ? '' : 's'} in "${snapshot.confirmRetryAll.queueName}"? They move back to waiting. (y/n)`}
           />
+        ) : snapshot.confirmRemoveQueue !== null ? (
+          <ConfirmPrompt message={removeQueuePrompt(snapshot.confirmRemoveQueue)} />
         ) : snapshot.currentView.kind === 'queues' ? (
           <>
             <Breadcrumb view={snapshot.currentView} sort={snapshot.queueSort} />
@@ -285,4 +287,11 @@ export function App({ store, onQuit, version = '0.0.0' }: AppProps) {
       </Box>
     </Box>
   );
+}
+
+/** Prompt text for removing a queue; names the job count when it has loaded. */
+function removeQueuePrompt({ queueName, total }: { queueName: string; total: number | null }) {
+  const jobs =
+    total === null ? 'all of its jobs' : `all ${total} of its job${total === 1 ? '' : 's'}`;
+  return `Remove queue "${queueName}" and ${jobs}? This cannot be undone, and a running worker or producer will create it again. (y/n)`;
 }

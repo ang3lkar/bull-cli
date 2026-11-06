@@ -6,6 +6,7 @@ import {
   drainQueue,
   duplicateJob,
   promoteJob,
+  removeQueue,
   retryFailedJobs,
   retryJob,
   togglePauseQueue,
@@ -51,7 +52,7 @@ export interface WiredApp {
  * - `fetchJobPage`/`getJobDetail` (and the scheduler fetches): normalized into a REJECTED promise —
  *   `DashboardStore.doRefreshWork`'s per-queue try/catch and `openDetail`'s
  *   own try/catch already handle that uniformly (toast, no crash).
- * - actions (`retry`/`delete`/`promote`/`duplicate`/`togglePause`/`drain`):
+ * - actions (`retry`/`delete`/`promote`/`duplicate`/`togglePause`/`drain`/`remove`):
  *   normalized
  *   into `{ ok: false, message }` — the ONLY shape `DashboardStore`'s action
  *   dispatch (`runJobAction`/`togglePauseSelectedQueue`) ever expects; it
@@ -145,6 +146,7 @@ export function createApp(
       togglePause: (queueName) =>
         safeAction(registry, queueName, (queue) => togglePauseQueue(queue)),
       drain: (queueName) => safeAction(registry, queueName, (queue) => drainQueue(queue)),
+      remove: (queueName) => safeAction(registry, queueName, (queue) => removeQueue(queue)),
       retryAll: (queueName) => safeRetryAll(registry, queueName),
     },
     syncRegistry: (names) => registry.sync(names),

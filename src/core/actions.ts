@@ -325,3 +325,49 @@ export async function drainQueue(queue: Queue): Promise<ActionResult> {
     return { ok: false, message: `Could not drain queue: ${toMessage(err)}` };
   }
 }
+
+/** Options for `removeQueue`. */
+export interface RemoveQueueOptions {
+  /** Remove the queue even while jobs are active (their workers will fail to finish them). */
+  force?: boolean;
+}
+
+/**
+ * Removes a queue entirely: every job in every state, its job schedulers,
+ * and the queue's own keys (including the `meta` hash discovery looks for,
+ * so it drops off the queue list). This is bullmq's `queue.obliterate()`.
+ *
+ * `obliterate()` pauses the queue before it checks for active jobs, so a
+ * refusal would otherwise leave the queue paused as a side effect. Two guards
+ * keep a refused removal from changing anything:
+ * - without `force`, active jobs are counted first and the removal is refused
+ *   before bullmq is called at all;
+ * - if `obliterate()` still throws (a job went active in between, or any
+ *   other error), a queue that wasn't paused before is resumed again.
+ */
+export async function removeQueue(
+  queue: Queue,
+  opts: RemoveQueueOptions = {},
+): Promise<ActionResult> {
+  const force = opts.force === true;
+  let wasPaused = true;
+  try {
+    if (!force) {
+      const active = await queue.getActiveCount();
+      if (active > 0) {
+        return {
+          ok: false,
+          message: `Queue has ${active} active job${active === 1 ? '' : 's'}; wait for them to finish, or use \`bull-cli remove --force\``,
+        };
+      }
+    }
+    wasPaused = await queue.isPaused();
+    await queue.obliterate({ force });
+    return { ok: true, info: `Queue "${queue.name}" removed` };
+  } catch (err) {
+    if (!wasPaused) {
+      await queue.resume().catch(() => {});
+    }
+    return { ok: false, message: `Could not remove queue: ${toMessage(err)}` };
+  }
+}

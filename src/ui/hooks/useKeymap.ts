@@ -100,6 +100,11 @@ export function useKeymap(
       return;
     }
 
+    if (snapshot.confirmRemoveQueue !== null) {
+      handleConfirmRemoveQueueInput(store, input, key);
+      return;
+    }
+
     if (input === 'r') {
       void store.refresh();
       return;
@@ -225,6 +230,16 @@ function handleConfirmRetryAllInput(store: DashboardStore, input: string, key: K
   }
 }
 
+function handleConfirmRemoveQueueInput(store: DashboardStore, input: string, key: Key): void {
+  if (input === 'y' || input === 'Y') {
+    void store.confirmRemoveQueue();
+    return;
+  }
+  if (input === 'n' || input === 'N' || key.escape) {
+    store.cancelRemoveQueue();
+  }
+}
+
 function handleConfirmDeleteInput(store: DashboardStore, input: string, key: Key): void {
   if (input === 'y' || input === 'Y') {
     void store.confirmDelete();
@@ -273,6 +288,10 @@ function handleQueueInput(
   }
   if (input === 'D') {
     store.requestDrain();
+    return;
+  }
+  if (input === 'X') {
+    store.requestRemoveQueue();
   }
 }
 

@@ -19,6 +19,7 @@ import {
 import { doctorExitCode, formatDoctorReport, runDoctor } from './core/doctor.js';
 import { createDoctorRedisClient } from './core/redis.js';
 import { dumpQueuesJson } from './jsonOutput.js';
+import { parseRemoveArgs, removeExitCode, runRemove } from './removeCommand.js';
 import { parseRetryArgs, retryExitCode, runRetry } from './retryCommand.js';
 import { createAltScreen } from './terminal.js';
 import { App } from './ui/App.js';
@@ -72,21 +73,24 @@ const cli = meow(
 	  $ bull-cli [options]
 	  $ bull-cli doctor [options]
 	  $ bull-cli retry --queue <name> (--dry-run | --yes) [options]
+	  $ bull-cli remove --queue <name> (--dry-run | --yes) [--force] [options]
 
 	Commands
 	  doctor             Diagnose config, connection and queue discovery (supports --output json)
 	  retry              Retry failed jobs and print a JSON summary (exits 1 if any retry failed)
+	  remove             Remove a queue and all its jobs, printing a JSON summary (cannot be undone)
 
 	Options
 	  --redis <url>      Redis connection URL (overrides REDIS_URL env var)
 	  --prefix <prefix>  BullMQ key prefix (overrides BULLMQ_PREFIX env var, default "bull")
 	  --profile <name>   Connection profile from the config file (default: "defaultProfile")
 	  --output <format>  Output mode (supported: json)
-	  --queue <name>     Queue filter for --output=json; the queue to act on for retry
+	  --queue <name>     Queue filter for --output=json; the queue to act on for retry/remove
 	  --job-id <id>      retry: only this failed job
 	  --since <duration> retry: only jobs that failed within this window (30s, 15m, 2h, 7d, 1w)
-	  --dry-run          retry: report what would be retried without changing anything
-	  --yes              retry: actually retry (retry refuses to run without --dry-run or --yes)
+	  --dry-run          retry/remove: report what would change without changing anything
+	  --yes              retry/remove: actually do it (both refuse to run without --dry-run or --yes)
+	  --force            remove: remove even while jobs are active
 	  -h, --help         Show help
 	  -v, --version      Show version
 
@@ -100,6 +104,8 @@ const cli = meow(
 	  $ bull-cli doctor --output json
 	  $ bull-cli retry --queue email --dry-run
 	  $ bull-cli retry --queue email --since 2h --yes
+	  $ bull-cli remove --queue old-email --dry-run
+	  $ bull-cli remove --queue old-email --yes
 `,
   {
     importMeta: import.meta,
@@ -129,6 +135,9 @@ const cli = meow(
         type: 'boolean',
       },
       yes: {
+        type: 'boolean',
+      },
+      force: {
         type: 'boolean',
       },
       help: {
@@ -237,14 +246,52 @@ async function runRetryCommand(extra: string[]): Promise<never> {
   return new Promise<never>(() => {});
 }
 
+/**
+ * `bull-cli remove`: headless like `retry`, with the same connection
+ * resolution. Parsing and the run live in removeCommand.ts.
+ */
+async function runRemoveCommand(extra: string[]): Promise<never> {
+  if (cli.flags.jobId !== undefined || cli.flags.since !== undefined) {
+    console.error('Error: --job-id and --since only work with the retry command');
+    process.exit(1);
+  }
+  const parsed = parseRemoveArgs(extra, cli.flags);
+  if (!parsed.ok) {
+    console.error(`Error: ${parsed.error}`);
+    process.exit(1);
+  }
+  const userConfig = loadConfigFile(userConfigPath(process.env, homedir()));
+  const projectConfig = loadConfigFile(projectConfigPath(process.cwd()));
+  const { redisUrl, prefix } = resolveConnection(userConfig, projectConfig);
+  const report = await runRemove(parsed.options, { redisUrl, prefix });
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`, () =>
+    process.exit(removeExitCode(report)),
+  );
+  // Keep the promise pending until the write callback exits the process.
+  return new Promise<never>(() => {});
+}
+
 async function main(): Promise<void> {
   const [command, ...extra] = cli.input;
   if (command === 'retry') {
+    if (cli.flags.force) {
+      console.error('Error: --force only works with the remove command');
+      process.exit(1);
+    }
     await runRetryCommand(extra);
   }
-  const { jobId, since, dryRun, yes } = cli.flags;
+  if (command === 'remove') {
+    await runRemoveCommand(extra);
+  }
+  const { jobId, since, dryRun, yes, force } = cli.flags;
   if (jobId !== undefined || since !== undefined || dryRun || yes) {
-    console.error('Error: --job-id, --since, --dry-run and --yes only work with the retry command');
+    console.error(
+      'Error: --job-id, --since, --dry-run and --yes only work with the retry and remove commands',
+    );
+    process.exit(1);
+  }
+  if (force) {
+    console.error('Error: --force only works with the remove command');
     process.exit(1);
   }
   if (command === 'doctor' && extra.length > 0) {
