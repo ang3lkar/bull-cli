@@ -6,6 +6,7 @@ import {
   duplicateJob,
   pauseQueue,
   promoteJob,
+  removeQueue,
   resumeQueue,
   retryFailedJobs,
   retryJob,
@@ -226,6 +227,109 @@ describe('drainQueue error mapping', () => {
     const result = await drainQueue(queue);
 
     expect(result).toEqual({ ok: false, message: 'Could not drain queue: drain boom' });
+  });
+});
+
+describe('removeQueue (fake queue)', () => {
+  function removable(overrides: Partial<Queue> = {}) {
+    const calls: string[] = [];
+    const queue = fakeQueue({
+      name: 'emails',
+      getActiveCount: async () => 0,
+      isPaused: async () => false,
+      obliterate: async (opts?: { force?: boolean }) => {
+        calls.push(`obliterate:${opts?.force === true}`);
+      },
+      resume: async () => {
+        calls.push('resume');
+      },
+      ...overrides,
+    } as Partial<Queue>);
+    return { queue, calls };
+  }
+
+  it('obliterates an idle queue and reports it', async () => {
+    const { queue, calls } = removable();
+    expect(await removeQueue(queue)).toEqual({ ok: true, info: 'Queue "emails" removed' });
+    expect(calls).toEqual(['obliterate:false']);
+  });
+
+  it('refuses without touching the queue while jobs are active', async () => {
+    const { queue, calls } = removable({ getActiveCount: async () => 2 });
+    const result = await removeQueue(queue);
+    expect(result).toEqual({
+      ok: false,
+      message: expect.stringContaining('Queue has 2 active jobs'),
+    });
+    expect(calls).toEqual([]);
+    const one = await removeQueue(removable({ getActiveCount: async () => 1 }).queue);
+    expect(one).toEqual({ ok: false, message: expect.stringContaining('1 active job;') });
+  });
+
+  it('with force, skips the active check and passes force to bullmq', async () => {
+    let counted = false;
+    const { queue, calls } = removable({
+      getActiveCount: async () => {
+        counted = true;
+        return 3;
+      },
+    });
+    expect((await removeQueue(queue, { force: true })).ok).toBe(true);
+    expect(counted).toBe(false);
+    expect(calls).toEqual(['obliterate:true']);
+  });
+
+  it('resumes a queue that was running when obliterate fails, since obliterate pauses first', async () => {
+    const { queue, calls } = removable({
+      obliterate: async () => {
+        throw new Error('Cannot obliterate queue with active jobs');
+      },
+    });
+    expect(await removeQueue(queue)).toEqual({
+      ok: false,
+      message: 'Could not remove queue: Cannot obliterate queue with active jobs',
+    });
+    expect(calls).toEqual(['resume']);
+  });
+
+  it('leaves an already-paused queue paused when obliterate fails', async () => {
+    const { queue, calls } = removable({
+      isPaused: async () => true,
+      obliterate: async () => {
+        throw 'boom';
+      },
+    });
+    expect(await removeQueue(queue)).toEqual({
+      ok: false,
+      message: 'Could not remove queue: boom',
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it('does not resume when it failed before reading the pause state, and survives a failing resume', async () => {
+    const early = removable({
+      getActiveCount: async () => {
+        throw new Error('conn lost');
+      },
+    });
+    expect(await removeQueue(early.queue)).toEqual({
+      ok: false,
+      message: 'Could not remove queue: conn lost',
+    });
+    expect(early.calls).toEqual([]);
+
+    const late = removable({
+      obliterate: async () => {
+        throw new Error('x');
+      },
+      resume: async () => {
+        throw new Error('resume failed too');
+      },
+    });
+    expect(await removeQueue(late.queue)).toEqual({
+      ok: false,
+      message: 'Could not remove queue: x',
+    });
   });
 });
 

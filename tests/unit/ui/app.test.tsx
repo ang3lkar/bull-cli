@@ -88,6 +88,7 @@ function setup() {
       togglePause: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       drain: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       retryAll: vi.fn(async () => ({ matched: 0, retried: 0, errored: 0, errors: [] })),
+      remove: vi.fn(async () => ({ ok: true as const })),
     },
     syncRegistry: vi.fn(async () => {}),
   };
@@ -502,6 +503,42 @@ describe('App: contextual actions', () => {
     stdin.write('y');
     await flush();
     expect(deps.actions.delete).toHaveBeenCalledWith('emailQ', 'active-1');
+  });
+
+  it('X on the queue list asks before removing the queue; n cancels, y removes', async () => {
+    const { deps, stdin, store, lastFrame } = await mount();
+    stdin.write('X');
+    await flush();
+    const pending = store.getSnapshot().confirmRemoveQueue;
+    expect(pending?.queueName).toBe('emailQ');
+    expect(lastFrame()).toContain('Remove queue "emailQ"');
+    expect(lastFrame()).toContain('cannot be undone');
+
+    stdin.write('\r'); // swallowed while the prompt is up
+    await flush();
+    expect(store.getSnapshot().currentView.kind).toBe('queues');
+
+    stdin.write('n');
+    await flush();
+    expect(store.getSnapshot().confirmRemoveQueue).toBeNull();
+    expect(deps.actions.remove).not.toHaveBeenCalled();
+
+    stdin.write('X');
+    await flush();
+    stdin.write('y');
+    await flush();
+    expect(deps.actions.remove).toHaveBeenCalledWith('emailQ');
+    expect(store.getSnapshot().confirmRemoveQueue).toBeNull();
+  });
+
+  it('X does nothing inside a queue', async () => {
+    const { deps, stdin, store } = await mount();
+    stdin.write('\r');
+    await flush();
+    stdin.write('X');
+    await flush();
+    expect(store.getSnapshot().confirmRemoveQueue).toBeNull();
+    expect(deps.actions.remove).not.toHaveBeenCalled();
   });
 
   it('copies the detail data and keeps q global', async () => {

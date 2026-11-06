@@ -79,6 +79,7 @@ function shortcutsFor(view: NavigationView | undefined, status: Tab | undefined)
     { key: 'Enter', label: 'Jobs' },
     { key: 'p', label: 'Pause/resume' },
     { key: 'D', label: 'Drain' },
+    { key: 'X', label: 'Remove' },
     { key: 's', label: 'Sort' },
     { key: '/', label: 'Filter' },
   ];

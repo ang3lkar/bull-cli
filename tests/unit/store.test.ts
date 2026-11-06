@@ -90,6 +90,7 @@ function createFakeDeps(state: FakeState): StoreDeps {
       togglePause: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       drain: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
       retryAll: vi.fn(async () => ({ matched: 0, retried: 0, errored: 0, errors: [] })),
+      remove: vi.fn(async (): Promise<ActionResult> => ({ ok: true })),
     },
     syncRegistry: vi.fn(async () => {}),
   };
@@ -2405,6 +2406,111 @@ describe('DashboardStore: bulk retry flow', () => {
     const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
     await store.confirmRetryAll();
     expect(deps.actions.retryAll).not.toHaveBeenCalled();
+  });
+});
+
+describe('DashboardStore: remove queue flow', () => {
+  const twoQueues = (): FakeState => ({
+    queues: [makeQueue('a'), makeQueue('b')],
+    jobs: {
+      [jobKey('a', 'failed')]: [makeJob('f1', 'job'), makeJob('f2', 'job')],
+      [jobKey('a', 'waiting')]: [makeJob('w1', 'job')],
+    },
+    details: {},
+  });
+
+  async function onQueueList(state: FakeState) {
+    const deps = createFakeDeps(state);
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+    return { deps, store };
+  }
+
+  it('captures the queue and its job total, and cancel aborts without calling the action', async () => {
+    const { deps, store } = await onQueueList(twoQueues());
+
+    store.cancelRemoveQueue(); // no-op, nothing pending
+    store.requestRemoveQueue();
+    expect(store.getSnapshot().confirmRemoveQueue).toEqual({ queueName: 'a', total: 3 });
+    store.requestRemoveQueue(); // no-op, already pending
+
+    store.cancelRemoveQueue();
+    expect(store.getSnapshot().confirmRemoveQueue).toBeNull();
+    expect(deps.actions.remove).not.toHaveBeenCalled();
+  });
+
+  it('reports a null total when the queue counts have not loaded', async () => {
+    const deps = createFakeDeps(twoQueues());
+    (deps.fetchQueueCounts as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('no counts'));
+    (deps.fetchJobPage as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('no page'));
+    const store = track(new DashboardStore(deps, { redisUrl: 'redis://x' }));
+    await store.refresh();
+    store.requestRemoveQueue();
+    expect(store.getSnapshot().confirmRemoveQueue).toEqual({ queueName: 'a', total: null });
+  });
+
+  it('confirming removes the queue, toasts, and the refresh moves the selection on', async () => {
+    const state = twoQueues();
+    const { deps, store } = await onQueueList(state);
+    (deps.actions.remove as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+      state.queues = state.queues.filter((q) => q.name !== 'a');
+      return { ok: true, info: 'Queue "a" removed' };
+    });
+
+    store.requestRemoveQueue();
+    await store.confirmRemoveQueue();
+
+    expect(deps.actions.remove).toHaveBeenCalledWith('a');
+    const snap = store.getSnapshot();
+    expect(snap.confirmRemoveQueue).toBeNull();
+    expect(snap.toasts.map((t) => t.message)).toEqual(['Queue "a" removed']);
+    expect(snap.queues.map((q) => q.name)).toEqual(['b']);
+    expect(snap.selectedQueueName).toBe('b');
+    expect(deps.syncRegistry).toHaveBeenLastCalledWith(['b']);
+  });
+
+  it('falls back to a generic toast when the action gives no info', async () => {
+    const { store } = await onQueueList(twoQueues());
+    store.requestRemoveQueue();
+    await store.confirmRemoveQueue();
+    expect(store.getSnapshot().toasts.map((t) => t.message)).toEqual(['Queue "a" removed']);
+  });
+
+  it('toasts the failure and does not refresh when removal is refused', async () => {
+    const { deps, store } = await onQueueList(twoQueues());
+    (deps.actions.remove as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: false,
+      message: 'Queue has 1 active job',
+    });
+    const callsBefore = (deps.discoverQueues as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    store.requestRemoveQueue();
+    await store.confirmRemoveQueue();
+
+    expect(store.getSnapshot().toasts.map((t) => t.message)).toEqual(['Queue has 1 active job']);
+    expect(deps.discoverQueues).toHaveBeenCalledTimes(callsBefore);
+  });
+
+  it('confirms against the queue captured at request time', async () => {
+    const { deps, store } = await onQueueList(twoQueues());
+    store.requestRemoveQueue();
+    store.selectQueue('b');
+    await store.confirmRemoveQueue();
+    expect(deps.actions.remove).toHaveBeenCalledWith('a');
+  });
+
+  it('is a no-op outside the queue list, with no queue selected, or without a request', async () => {
+    const { deps, store } = await onQueueList(twoQueues());
+    store.pushJobsView();
+    store.requestRemoveQueue();
+    expect(store.getSnapshot().confirmRemoveQueue).toBeNull();
+
+    const empty = await onQueueList({ queues: [], jobs: {}, details: {} });
+    empty.store.requestRemoveQueue();
+    expect(empty.store.getSnapshot().confirmRemoveQueue).toBeNull();
+
+    await store.confirmRemoveQueue();
+    expect(deps.actions.remove).not.toHaveBeenCalled();
   });
 });
 

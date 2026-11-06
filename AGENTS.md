@@ -43,7 +43,7 @@ from coverage entirely (it's the process entrypoint, exercised only manually/e2e
 
 Integration and e2e tests each use their own Redis **logical DB** (not DB 0, so they never collide
 with `npm run seed` or each other): discovery=1, jobs=2, actions=3, e2e=4, wiring=5, registry=13,
-jsonOutput=6, schedulers=7, doctor=8, retry=9, redis=14, sanity=15.
+jsonOutput=6, schedulers=7, doctor=8, retry=9, removeQueue=10, redis=14, sanity=15.
 
 ## Architecture
 
@@ -76,7 +76,7 @@ expressed purely in terms of queue **names**, never `Queue` instances. `src/wiri
   read-only Schedulers tab (`Tab = JobStatus | 'schedulers'`; `JobStatus` itself is unchanged).
 - `jobs.ts` — `fetchJobPage`/`getJobDetail`, including bullmq's queue-count/pagination quirks (a
   paused queue's `waiting` jobs live in the `paused` bucket, folded together for the tab count).
-- `actions.ts` — retry/delete/promote/pause/resume/drain; **never throws**, every failure
+- `actions.ts` — retry/delete/promote/pause/resume/drain/remove (`obliterate`); **never throws**, every failure
   normalizes to `{ ok: false, message }` so the store can surface it as a toast uniformly.
 
 A `Queue` name containing `:` is legal in Redis (written by another client/older bullmq) but

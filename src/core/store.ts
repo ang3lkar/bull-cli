@@ -99,6 +99,8 @@ export interface StoreDeps {
     duplicate(queueName: string, jobId: string): Promise<ActionResult>;
     togglePause(queueName: string): Promise<ActionResult>;
     drain(queueName: string): Promise<ActionResult>;
+    /** Removes the queue entirely (bullmq `obliterate`), refusing while jobs are active. */
+    remove(queueName: string): Promise<ActionResult>;
     /** Retries every failed job in the queue (Failed tab `A`). Never throws. */
     retryAll(queueName: string): Promise<RetrySummary>;
   };
@@ -218,6 +220,11 @@ export interface DashboardSnapshot {
   confirmDeleteJobId: string | null;
   /** Pending "retry all failed jobs" confirmation, with the failed count shown in the prompt. */
   confirmRetryAll: { queueName: string; count: number } | null;
+  /**
+   * Pending "remove queue" confirmation. `total` is the job count shown in
+   * the prompt, or `null` when the queue's counts haven't loaded yet.
+   */
+  confirmRemoveQueue: { queueName: string; total: number | null } | null;
   focus: Focus;
   toasts: Toast[];
   lastUpdatedAt: number | null;
@@ -304,6 +311,8 @@ export class DashboardStore {
   private pendingDuplicate: { queueName: string; jobId: string } | null = null;
   /** Pending bulk retry, captured at request time; see `requestRetryAll`. */
   private pendingRetryAll: { queueName: string; count: number } | null = null;
+  /** Pending queue removal, captured at request time; see `requestRemoveQueue`. */
+  private pendingRemoveQueue: { queueName: string; total: number | null } | null = null;
   private focus: Focus = 'sidebar';
   private toasts: Toast[] = [];
   private lastUpdatedAt: number | null = null;
@@ -410,6 +419,7 @@ export class DashboardStore {
       confirmDuplicateJobId: this.pendingDuplicate?.jobId ?? null,
       confirmDeleteJobId: this.pendingDelete?.jobId ?? null,
       confirmRetryAll: this.pendingRetryAll,
+      confirmRemoveQueue: this.pendingRemoveQueue,
       focus: this.focus,
       toasts: this.toasts,
       lastUpdatedAt: this.lastUpdatedAt,
@@ -1500,6 +1510,63 @@ export class DashboardStore {
       return;
     }
     this.pushToast(result.info ?? 'Queue drained');
+    await this.refresh();
+  }
+
+  // --- remove queue flow -----------------------------------------------
+
+  /**
+   * Queue list `X`: asks for confirmation before removing the selected queue
+   * entirely. The queue is captured NOW, like `requestRetryAll`, not read
+   * again at confirm time: a poll can move the selection while the prompt
+   * is open, and this action must never land on a different queue than the
+   * one named in the prompt.
+   */
+  requestRemoveQueue(): void {
+    if (
+      this.currentView().kind !== 'queues' ||
+      this.selectedQueueName === null ||
+      this.pendingRemoveQueue !== null
+    ) {
+      return;
+    }
+    const counts = this.queueCountsByName.get(this.selectedQueueName);
+    const total =
+      counts === undefined
+        ? null
+        : counts.waiting + counts.active + counts.delayed + counts.completed + counts.failed;
+    this.pendingRemoveQueue = { queueName: this.selectedQueueName, total };
+    this.emit();
+  }
+
+  cancelRemoveQueue(): void {
+    if (this.pendingRemoveQueue === null) {
+      return;
+    }
+    this.pendingRemoveQueue = null;
+    this.emit();
+  }
+
+  /**
+   * Confirms a pending removal: toasts the outcome, and on success refreshes.
+   * The refresh is what takes the queue off the list: discovery no longer
+   * finds its `meta` key, the selection moves to a neighbour, and
+   * `syncRegistry` closes the cached `Queue`.
+   */
+  async confirmRemoveQueue(): Promise<void> {
+    if (this.pendingRemoveQueue === null) {
+      return;
+    }
+    const { queueName } = this.pendingRemoveQueue;
+    this.pendingRemoveQueue = null;
+    this.emit();
+
+    const result = await this.deps.actions.remove(queueName);
+    if (!result.ok) {
+      this.pushToast(result.message);
+      return;
+    }
+    this.pushToast(result.info ?? `Queue "${queueName}" removed`);
     await this.refresh();
   }
 
